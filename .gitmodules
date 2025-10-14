@@ -1,3 +1,4 @@
 [submodule "aeon-gateway"]
 	path = aeon-gateway
 	url = https://github.com/Aeon-Bio/aeon-gateway.git
+	branch = main
