@@ -1,19 +1,52 @@
 [project]
-name = "digitalme"
+name = "indra-agent"
 version = "0.1.0"
-description = "Add your description here"
-readme = "README.md"
-requires-python = ">=3.13"
+description = "LangGraph-based multi-agent system for INDRA bio-ontology causal discovery"
+authors = [{name = "Your Name", email = "your.email@example.com"}]
+requires-python = ">=3.12"
 dependencies = [
-    "asyncio>=4.0.0",
-    "fastapi>=0.119.0",
-    "httpx>=0.28.1",
-    "langchain>=0.3.27",
-    "langchain-anthropic>=0.3.22",
-    "langchain-aws>=0.2.35",
-    "langgraph>=0.6.10",
-    "pydantic>=2.12.2",
-    "pytest>=8.4.2",
-    "python-dotenv>=1.1.1",
-    "uvicorn>=0.37.0",
+    "fastapi>=0.115.0",
+    "uvicorn[standard]>=0.32.0",
+    "pydantic>=2.9.0",
+    "pydantic-settings>=2.6.0",
+    "httpx>=0.27.0",
+    "langgraph>=0.2.0",
+    "langchain>=0.3.0",
+    "langchain-aws>=0.2.0",
+    "boto3>=1.35.0",
+    "python-dotenv>=1.0.0",
 ]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.3.0",
+    "pytest-asyncio>=0.24.0",
+    "pytest-cov>=6.0.0",
+    "black>=24.10.0",
+    "ruff>=0.7.0",
+]
+
+[build-system]
+requires = ["setuptools>=61.0"]
+
+
+[tool.setuptools]
+packages = ["indra_agent"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+asyncio_mode = "auto"
+asyncio_default_fixture_loop_scope = "function"
+
+[tool.black]
+line-length = 88
+target-version = ['py312']
+
+[tool.ruff]
+line-length = 88
+target-version = "py312"
+select = ["E", "F", "I", "N", "W"]
+ignore = ["E501"]
+
+[tool.ruff.per-file-ignores]
+"__init__.py" = ["F401"]
