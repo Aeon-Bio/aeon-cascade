@@ -56,7 +56,7 @@ class SupervisorAgent:
 
         # Initial routing
         if not current_agent:
-            return self._initial_routing(state)
+            return await self._initial_routing(state)
 
         # After INDRA agent
         if current_agent == "indra_query_agent":
@@ -64,13 +64,13 @@ class SupervisorAgent:
 
         # After web researcher
         if current_agent == "web_researcher":
-            return self._after_web_researcher(state)
+            return await self._after_web_researcher(state)
 
         # Default: end
         return {"next_agent": "END"}
 
-    def _initial_routing(self, state: OverallState) -> Dict:
-        """Initial routing logic.
+    async def _initial_routing(self, state: OverallState) -> Dict:
+        """Initial routing logic using LLM.
 
         Args:
             state: Current state
@@ -78,21 +78,35 @@ class SupervisorAgent:
         Returns:
             Routing decision
         """
-        query_text = state.get("query", {}).get("text", "").lower()
+        query_text = state.get("query", {}).get("text", "")
+        user_context = state.get("user_context", {})
 
-        # Determine if we need environmental data
-        needs_environmental = any(
-            keyword in query_text
-            for keyword in ["air quality", "pollution", "los angeles", "la", "move", "city"]
-        )
+        # Use LLM to determine routing
+        messages = [
+            SystemMessage(content=self.config.system_prompt),
+            HumanMessage(content=f"""Analyze this causal discovery query and determine which specialist agent to route to first.
 
-        if needs_environmental and state.get("user_context", {}).get("location_history"):
-            # Start with environmental data
-            logger.info("Routing to web_researcher first")
+Query: {query_text}
+User Context: Has location history: {bool(user_context.get('location_history'))}
+Has biomarkers: {list(user_context.get('current_biomarkers', {}).keys())}
+Has genetics: {bool(user_context.get('genetics'))}
+
+Decision Rules:
+1. If query involves environmental conditions (air quality, pollution, location changes) AND user has location history -> route to 'web_researcher'
+2. Otherwise -> route to 'indra_query_agent'
+
+Respond with ONLY the agent name: 'web_researcher' or 'indra_query_agent'"""),
+        ]
+
+        response = await self.llm.ainvoke(messages)
+        next_agent = response.content.strip().lower()
+
+        # Validate response
+        if "web_researcher" in next_agent and user_context.get("location_history"):
+            logger.info("LLM routing to web_researcher first")
             return {"next_agent": "web_researcher"}
         else:
-            # Start with INDRA
-            logger.info("Routing to indra_query_agent first")
+            logger.info("LLM routing to indra_query_agent first")
             return {"next_agent": "indra_query_agent"}
 
     async def _after_indra_agent(self, state: OverallState) -> Dict:
@@ -114,9 +128,9 @@ class SupervisorAgent:
 
         # We have everything, finalize
         logger.info("INDRA agent done, finalizing")
-        return self._finalize_response(state)
+        return await self._finalize_response(state)
 
-    def _after_web_researcher(self, state: OverallState) -> Dict:
+    async def _after_web_researcher(self, state: OverallState) -> Dict:
         """Handle state after web researcher execution.
 
         Args:
@@ -133,10 +147,10 @@ class SupervisorAgent:
 
         # We have everything, finalize
         logger.info("Web researcher done, finalizing")
-        return self._finalize_response(state)
+        return await self._finalize_response(state)
 
-    def _finalize_response(self, state: OverallState) -> Dict:
-        """Finalize the response with explanations.
+    async def _finalize_response(self, state: OverallState) -> Dict:
+        """Finalize the response with explanations using LLM.
 
         Args:
             state: Current state
@@ -144,10 +158,15 @@ class SupervisorAgent:
         Returns:
             Final state update
         """
-        logger.info("Finalizing response")
+        logger.info("Finalizing response with LLM-generated explanations")
 
-        # Get causal graph
+        # Get causal graph with defensive handling
         causal_graph_dict = state.get("causal_graph", {})
+
+        # Ensure required fields exist
+        if not causal_graph_dict or "nodes" not in causal_graph_dict:
+            causal_graph_dict = {"nodes": [], "edges": [], "genetic_modifiers": []}
+
         causal_graph = CausalGraph(**causal_graph_dict)
 
         # Get environmental data
@@ -156,12 +175,47 @@ class SupervisorAgent:
         # Get genetics
         genetics = state.get("user_context", {}).get("genetics", {})
 
-        # Generate explanations
-        explanations = self.graph_builder.generate_explanations(
-            causal_graph=causal_graph,
-            environmental_data=environmental_data,
-            genetics=genetics,
-        )
+        # Get query
+        query_text = state.get("query", {}).get("text", "")
+
+        # Use LLM to generate explanations
+        messages = [
+            SystemMessage(content=self.config.system_prompt),
+            HumanMessage(content=f"""Generate 3-5 concise explanations (each <200 chars) for this causal discovery result.
+
+Query: {query_text}
+
+Causal Graph:
+- Nodes: {len(causal_graph.nodes)} ({', '.join([n.name for n in causal_graph.nodes[:5]])})
+- Edges: {len(causal_graph.edges)} causal relationships
+
+Environmental Data: {environmental_data.get('summary', 'None')}
+Genetic Context: {list(genetics.keys()) if genetics else 'None'}
+
+Priority order:
+1. Environmental exposure changes (if present)
+2. Genetic modifiers (if present)
+3. Strongest causal relationship (highest evidence)
+4. Overall causal mechanism summary
+5. Expected health outcome
+
+Format as a JSON list of strings: ["explanation 1", "explanation 2", ...]
+Each explanation must be <200 characters."""),
+        ]
+
+        try:
+            response = await self.llm.ainvoke(messages)
+            import json
+            explanations = json.loads(response.content.strip())
+            logger.info(f"LLM generated {len(explanations)} explanations")
+        except Exception as e:
+            logger.warning(f"LLM explanation generation failed: {e}, using fallback")
+            # Fallback to service-based explanations
+            explanations = self.graph_builder.generate_explanations(
+                causal_graph=causal_graph,
+                environmental_data=environmental_data,
+                genetics=genetics,
+            )
 
         # Calculate metadata
         query_time_ms = int((time.time() - self.start_time) * 1000)

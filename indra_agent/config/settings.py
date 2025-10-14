@@ -30,12 +30,13 @@ class Settings(BaseSettings):
     log_level: str = "INFO"
 
     # INDRA Settings
-    indra_base_url: str = "https://db.indra.bio"
+    # Network Search API for entity grounding and resolution
+    indra_base_url: str = "https://network.indra.bio"
     indra_timeout: int = 30
     indra_cache_ttl: int = 3600  # 1 hour
 
     # Agent Settings (AWS Bedrock Model ID)
-    agent_model: str = "us.anthropic.claude-sonnet-4-5-20250129-v1:0"
+    agent_model: str = "us.anthropic.claude-sonnet-4-5-20250929-v1:0"
     agent_temperature: float = 0.0
 
     @property

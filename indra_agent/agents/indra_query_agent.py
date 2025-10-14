@@ -52,15 +52,16 @@ class INDRAQueryAgent:
         logger.info("INDRA query agent executing")
 
         try:
-            # Extract entities from query
-            entities = self._extract_entities(state)
+            # Extract entities from query using LLM
+            entities = await self._extract_entities(state)
 
             # Ground entities
             grounded = self.grounding_service.ground_entities(entities)
 
-            # Identify sources (exposures) and targets (biomarkers)
-            sources = self._identify_sources(grounded)
-            targets = self._identify_targets(grounded, state)
+            # Identify sources (exposures) and targets (biomarkers) using LLM
+            query_text = state.get("query", {}).get("text", "")
+            sources = await self._identify_sources(grounded, query_text)
+            targets = await self._identify_targets(grounded, state)
 
             logger.info(f"Sources: {sources}, Targets: {targets}")
 
@@ -98,13 +99,15 @@ class INDRAQueryAgent:
 
         except Exception as e:
             logger.error(f"INDRA query agent error: {e}", exc_info=True)
+            # Return empty but valid causal graph to prevent downstream validation errors
             return {
                 "current_agent": "indra_query_agent",
+                "causal_graph": {"nodes": [], "edges": [], "genetic_modifiers": []},
                 "metadata": {"error": str(e)},
             }
 
-    def _extract_entities(self, state: OverallState) -> list:
-        """Extract entities from query text.
+    async def _extract_entities(self, state: OverallState) -> list:
+        """Extract entities from query text using LLM.
 
         Args:
             state: Current state
@@ -113,34 +116,92 @@ class INDRAQueryAgent:
             List of entity names
         """
         query_text = state.get("query", {}).get("text", "")
-        entities = self.grounding_service.extract_entities_from_query(query_text)
-
-        # Add focus biomarkers
         focus_biomarkers = state.get("query", {}).get("focus_biomarkers", [])
-        entities.extend(focus_biomarkers)
 
-        # Deduplicate
-        return list(set(entities))
+        # Use LLM to extract entities
+        messages = [
+            SystemMessage(content=self.config.system_prompt),
+            HumanMessage(content=f"""Extract biological entities from this query for causal path discovery.
 
-    def _identify_sources(self, grounded: Dict) -> list:
-        """Identify source entities (environmental exposures).
+Query: {query_text}
+Focus Biomarkers: {focus_biomarkers}
+
+Identify:
+1. Environmental exposures (PM2.5, ozone, air pollution, chemicals)
+2. Biomarkers (CRP, IL-6, 8-OHdG, proteins, metabolites)
+3. Molecular mechanisms (oxidative stress, inflammation, NF-κB)
+4. Clinical outcomes (cardiovascular disease, cancer, etc.)
+
+Return ONLY a JSON list of entity names: ["entity1", "entity2", ...]"""),
+        ]
+
+        try:
+            response = await self.llm.ainvoke(messages)
+            import json
+            entities = json.loads(response.content.strip())
+            logger.info(f"LLM extracted {len(entities)} entities: {entities}")
+
+            # Add focus biomarkers
+            entities.extend(focus_biomarkers)
+
+            # Deduplicate
+            return list(set(entities))
+        except Exception as e:
+            logger.warning(f"LLM entity extraction failed: {e}, using fallback")
+            # Fallback to service-based extraction
+            entities = self.grounding_service.extract_entities_from_query(query_text)
+            entities.extend(focus_biomarkers)
+            return list(set(entities))
+
+    async def _identify_sources(self, grounded: Dict, query_text: str) -> list:
+        """Identify source entities (environmental exposures) using LLM.
 
         Args:
             grounded: Grounded entities dict
+            query_text: Original query text
 
         Returns:
             List of source entity IDs in INDRA format
         """
-        sources = []
-        for entity_name, entity_data in grounded.items():
-            if entity_data and entity_data.get("type") == "environmental":
-                indra_id = self.grounding_service.format_for_indra(entity_data)
-                sources.append(entity_data["id"])  # Use simple ID for caching
+        # Use LLM to identify sources
+        entity_list = "\n".join([f"- {name}: {data}" for name, data in grounded.items() if data])
 
-        return sources if sources else ["PM2.5"]  # Default to PM2.5
+        messages = [
+            SystemMessage(content=self.config.system_prompt),
+            HumanMessage(content=f"""From these grounded entities, identify which are SOURCES (environmental exposures or upstream causes).
 
-    def _identify_targets(self, grounded: Dict, state: OverallState) -> list:
-        """Identify target entities (biomarkers).
+Query: {query_text}
+
+Grounded Entities:
+{entity_list}
+
+Sources are typically:
+- Environmental exposures (PM2.5, ozone, pollution)
+- Chemicals or toxins
+- Lifestyle factors
+- Upstream causes
+
+Return ONLY a JSON list of entity IDs: ["entity_id1", "entity_id2", ...]
+If none found, return ["PM2.5"] as default."""),
+        ]
+
+        try:
+            response = await self.llm.ainvoke(messages)
+            import json
+            sources = json.loads(response.content.strip())
+            logger.info(f"LLM identified sources: {sources}")
+            return sources if sources else ["PM2.5"]
+        except Exception as e:
+            logger.warning(f"LLM source identification failed: {e}, using fallback")
+            # Fallback
+            sources = []
+            for entity_name, entity_data in grounded.items():
+                if entity_data and entity_data.get("type") == "environmental":
+                    sources.append(entity_data["id"])
+            return sources if sources else ["PM2.5"]
+
+    async def _identify_targets(self, grounded: Dict, state: OverallState) -> list:
+        """Identify target entities (biomarkers) using LLM.
 
         Args:
             grounded: Grounded entities dict
@@ -149,30 +210,56 @@ class INDRAQueryAgent:
         Returns:
             List of target entity IDs in INDRA format
         """
-        targets = []
-
-        # First try focus biomarkers
+        query_text = state.get("query", {}).get("text", "")
         focus_biomarkers = state.get("query", {}).get("focus_biomarkers", [])
-        for biomarker in focus_biomarkers:
-            if biomarker in grounded and grounded[biomarker]:
-                targets.append(grounded[biomarker]["id"])
+        entity_list = "\n".join([f"- {name}: {data}" for name, data in grounded.items() if data])
 
-        # Then try current biomarkers
-        if not targets:
-            current_biomarkers = (
-                state.get("user_context", {}).get("current_biomarkers", {}).keys()
-            )
-            for biomarker in current_biomarkers:
+        messages = [
+            SystemMessage(content=self.config.system_prompt),
+            HumanMessage(content=f"""From these grounded entities, identify which are TARGETS (biomarkers or health outcomes).
+
+Query: {query_text}
+Focus Biomarkers: {focus_biomarkers}
+
+Grounded Entities:
+{entity_list}
+
+Targets are typically:
+- Clinical biomarkers (CRP, IL-6, 8-OHdG)
+- Health outcomes or diseases
+- Downstream effects
+- Measurable health indicators
+
+Return ONLY a JSON list of entity IDs: ["entity_id1", "entity_id2", ...]
+If none found, return ["IL6", "CRP"] as default."""),
+        ]
+
+        try:
+            response = await self.llm.ainvoke(messages)
+            import json
+            targets = json.loads(response.content.strip())
+            logger.info(f"LLM identified targets: {targets}")
+            return targets if targets else ["IL6", "CRP"]
+        except Exception as e:
+            logger.warning(f"LLM target identification failed: {e}, using fallback")
+            # Fallback
+            targets = []
+            for biomarker in focus_biomarkers:
                 if biomarker in grounded and grounded[biomarker]:
                     targets.append(grounded[biomarker]["id"])
 
-        # Try entities marked as biomarkers
-        if not targets:
-            for entity_name, entity_data in grounded.items():
-                if entity_data and entity_data.get("type") == "biomarker":
-                    targets.append(entity_data["id"])
+            if not targets:
+                current_biomarkers = state.get("user_context", {}).get("current_biomarkers", {}).keys()
+                for biomarker in current_biomarkers:
+                    if biomarker in grounded and grounded[biomarker]:
+                        targets.append(grounded[biomarker]["id"])
 
-        return targets if targets else ["IL6", "CRP"]  # Defaults
+            if not targets:
+                for entity_name, entity_data in grounded.items():
+                    if entity_data and entity_data.get("type") == "biomarker":
+                        targets.append(entity_data["id"])
+
+            return targets if targets else ["IL6", "CRP"]
 
     async def cleanup(self):
         """Cleanup resources."""
