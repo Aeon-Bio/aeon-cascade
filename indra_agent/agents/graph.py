@@ -1,104 +1,70 @@
 """LangGraph workflow for causal discovery system."""
 
 import logging
-from typing import Literal
 
-from langgraph.graph import END, StateGraph
+from langchain_aws import ChatBedrock
+from langgraph_supervisor import create_supervisor
 
 from indra_agent.agents.indra_query_agent import create_indra_query_agent
 from indra_agent.agents.mesh_enrichment_agent import create_mesh_enrichment_agent
 from indra_agent.agents.state import OverallState
-from indra_agent.agents.supervisor import create_supervisor_agent
 from indra_agent.agents.web_researcher import create_web_researcher_agent
+from indra_agent.config.agent_config import SUPERVISOR_CONFIG
+from indra_agent.config.settings import get_settings
+from indra_agent.utils.handoff_tools import create_agent_handoff_tools
 
 logger = logging.getLogger(__name__)
 
 
-def create_causal_discovery_graph():
-    """Create the LangGraph workflow for causal discovery.
+async def create_causal_discovery_graph():
+    """Create the LangGraph workflow for causal discovery using langgraph_supervisor.
 
     Returns:
-        Compiled LangGraph workflow
+        Compiled LangGraph workflow with supervisor and specialist agents
     """
-    logger.info("Creating causal discovery graph")
+    logger.info("Creating causal discovery graph with langgraph_supervisor")
 
-    # Create workflow graph
-    workflow = StateGraph(OverallState)
+    settings = get_settings()
 
-    # Create agent instances (factory functions return coroutines, need to be called at runtime)
-    # For now we'll use async wrapper pattern
-    async def supervisor_node(state: OverallState, config):
-        agent = await create_supervisor_agent()
-        return await agent(state, config)
-
-    async def mesh_enrichment_node(state: OverallState, config):
-        agent = await create_mesh_enrichment_agent()
-        result = await agent(state, config)
-        await agent.cleanup()
-        return result
-
-    async def indra_query_node(state: OverallState, config):
-        agent = await create_indra_query_agent()
-        result = await agent(state, config)
-        await agent.cleanup()
-        return result
-
-    async def web_researcher_node(state: OverallState, config):
-        agent = await create_web_researcher_agent()
-        result = await agent(state, config)
-        await agent.cleanup()
-        return result
-
-    # Add nodes
-    workflow.add_node("supervisor", supervisor_node)
-    workflow.add_node("mesh_enrichment", mesh_enrichment_node)
-    workflow.add_node("indra_query_agent", indra_query_node)
-    workflow.add_node("web_researcher", web_researcher_node)
-
-    # Define routing logic
-    def route_supervisor(
-        state: OverallState,
-    ) -> Literal["mesh_enrichment", "indra_query_agent", "web_researcher", END]:
-        """Route from supervisor to next agent or END.
-
-        Args:
-            state: Current state
-
-        Returns:
-            Next node name
-        """
-        next_agent = state.get("next_agent", "END")
-        logger.info(f"Routing from supervisor to: {next_agent}")
-
-        if next_agent == "END":
-            return END
-        return next_agent
-
-    # Add edges
-    workflow.add_conditional_edges(
-        "supervisor",
-        route_supervisor,
-        {
-            "mesh_enrichment": "mesh_enrichment",
-            "indra_query_agent": "indra_query_agent",
-            "web_researcher": "web_researcher",
-            END: END,
-        },
+    # Initialize supervisor LLM
+    supervisor_llm = ChatBedrock(
+        model_id=settings.agent_model,
+        region_name=settings.aws_region,
+        model_kwargs={"temperature": SUPERVISOR_CONFIG.temperature},
     )
 
-    # MeSH enrichment always goes to INDRA query agent
-    workflow.add_edge("mesh_enrichment", "indra_query_agent")
+    # Create handoff tools for all enabled agents
+    handoff_tools = create_agent_handoff_tools()
+    logger.info(f"Created {len(handoff_tools)} handoff tools")
 
-    # INDRA and web researcher return to supervisor
-    workflow.add_edge("indra_query_agent", "supervisor")
-    workflow.add_edge("web_researcher", "supervisor")
+    # Create specialist agents with handoff tools
+    agents = []
 
-    # Set entry point
-    workflow.set_entry_point("supervisor")
+    # Conditionally add MeSH enrichment agent if Writer KG configured
+    if settings.is_writer_configured:
+        logger.info("Writer KG configured - including MeSH enrichment agent")
+        mesh_agent = await create_mesh_enrichment_agent(handoff_tools=handoff_tools)
+        agents.append(mesh_agent)
 
-    # Compile
+    # Always include INDRA query and web researcher agents
+    indra_agent = await create_indra_query_agent(handoff_tools=handoff_tools)
+    web_agent = await create_web_researcher_agent(handoff_tools=handoff_tools)
+    agents.extend([indra_agent, web_agent])
+
+    logger.info(f"Created {len(agents)} specialist agents")
+
+    # Create supervisor workflow
+    workflow = create_supervisor(
+        agents=agents,
+        model=supervisor_llm,
+        prompt=SUPERVISOR_CONFIG.system_prompt,
+        tools=handoff_tools,
+        state_schema=OverallState,
+        supervisor_name="supervisor",
+    )
+
+    # Compile workflow
     graph = workflow.compile()
 
     logger.info("Causal discovery graph compiled successfully")
-
     return graph

@@ -150,10 +150,14 @@ Generate a concise summary in <150 characters."""),
 
 
 # Factory function for agent
-async def create_web_researcher_agent() -> WebResearcherAgent:
+async def create_web_researcher_agent(handoff_tools=None) -> WebResearcherAgent:
     """Create web researcher agent instance.
+
+    Args:
+        handoff_tools: Optional handoff tools for delegation (unused in legacy agent)
 
     Returns:
         WebResearcherAgent instance
     """
+    # TODO: Convert to ReAct pattern with tools
     return WebResearcherAgent()

@@ -252,10 +252,14 @@ Example: "particulate matter, C-reactive protein, inflammation"
 
 
 # Factory function for agent
-async def create_mesh_enrichment_agent() -> MeSHEnrichmentAgent:
+async def create_mesh_enrichment_agent(handoff_tools=None) -> MeSHEnrichmentAgent:
     """Create MeSH enrichment agent instance.
+
+    Args:
+        handoff_tools: Optional handoff tools for delegation (unused in legacy agent)
 
     Returns:
         MeSHEnrichmentAgent instance
     """
+    # TODO: Convert to ReAct pattern with tools
     return MeSHEnrichmentAgent()

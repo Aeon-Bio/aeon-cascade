@@ -20,9 +20,16 @@ class INDRAAgentClient:
     """Client for executing INDRA causal discovery workflow."""
 
     def __init__(self):
-        """Initialize INDRA agent client."""
-        self.graph = create_causal_discovery_graph()
-        logger.info("INDRA agent client initialized")
+        """Initialize INDRA agent client (graph created lazily)."""
+        self.graph = None
+        logger.info("INDRA agent client created (graph will be initialized on first use)")
+
+    async def _ensure_graph(self):
+        """Ensure graph is initialized."""
+        if self.graph is None:
+            logger.info("Initializing causal discovery graph")
+            self.graph = await create_causal_discovery_graph()
+            logger.info("Graph initialized successfully")
 
     async def process_request(
         self, request: CausalDiscoveryRequest
@@ -38,6 +45,9 @@ class INDRAAgentClient:
         logger.info(f"Processing request: {request.request_id}")
 
         try:
+            # Ensure graph is initialized
+            await self._ensure_graph()
+
             # Prepare initial state
             initial_state = {
                 "messages": [],
