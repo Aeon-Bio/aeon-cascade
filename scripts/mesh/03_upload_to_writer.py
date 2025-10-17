@@ -19,6 +19,7 @@ import argparse
 import logging
 import os
 import sys
+import time
 from pathlib import Path
 
 import httpx
@@ -123,29 +124,41 @@ class WriterKGUploader:
                 logger.error(f"Response: {e.response.text}")
             sys.exit(1)
 
-    def add_file_to_graph(self, graph_id: str, file_id: str):
-        """Add uploaded file to Knowledge Graph.
+    def add_file_to_graph(self, graph_id: str, file_id: str, max_retries: int = 10):
+        """Add uploaded file to Knowledge Graph (with retry for processing delay).
 
         Args:
             graph_id: Knowledge Graph ID
             file_id: Uploaded file ID
+            max_retries: Maximum number of retries if file is still processing
         """
         logger.info(f"Adding file {file_id} to graph {graph_id}")
 
-        try:
-            response = self.client.post(
-                f"/graphs/{graph_id}/file",
-                json={"file_id": file_id},
-            )
-            response.raise_for_status()
+        for attempt in range(max_retries):
+            try:
+                response = self.client.post(
+                    f"/graphs/{graph_id}/file",
+                    json={"file_id": file_id},
+                )
+                response.raise_for_status()
 
-            logger.info("✓ File added to Knowledge Graph")
+                logger.info("✓ File added to Knowledge Graph")
+                return
 
-        except httpx.HTTPError as e:
-            logger.error(f"✗ Error adding file to graph: {e}")
-            if hasattr(e, "response") and e.response:
-                logger.error(f"Response: {e.response.text}")
-            sys.exit(1)
+            except httpx.HTTPError as e:
+                if hasattr(e, "response") and e.response:
+                    response_text = e.response.text
+                    # Check if file is still processing
+                    if "still processing" in response_text.lower() and attempt < max_retries - 1:
+                        wait_time = 2 * (attempt + 1)  # Exponential backoff
+                        logger.info(f"  File still processing, waiting {wait_time}s (attempt {attempt + 1}/{max_retries})...")
+                        time.sleep(wait_time)
+                        continue
+
+                logger.error(f"✗ Error adding file to graph: {e}")
+                if hasattr(e, "response") and e.response:
+                    logger.error(f"Response: {e.response.text}")
+                sys.exit(1)
 
     def close(self):
         """Close HTTP client."""

@@ -1,0 +1,89 @@
+{
+  "user_id": "SARAH_CHEN_001",
+  "location_history": [
+    {
+      "city": "San Francisco, CA",
+      "start_date": "2020-01-15",
+      "end_date": "2025-08-31",
+      "duration_days": 2055,
+      "avg_pm25": 7.8,
+      "avg_pm10": 18.2,
+      "avg_ozone": 0.042,
+      "data_source": "EPA AirNow + PurpleAir sensors",
+      "address_type": "residential",
+      "neighborhood": "Mission District",
+      "coordinates": {
+        "latitude": 37.7599,
+        "longitude": -122.4148
+      },
+      "environmental_context": {
+        "urban_density": "high",
+        "traffic_proximity": "moderate (2 blocks from major street)",
+        "industrial_proximity": "low",
+        "green_space": "moderate (Dolores Park 0.5 miles)",
+        "air_quality_rating": "good_to_moderate"
+      },
+      "health_status_during_period": {
+        "baseline_inflammatory_state": "normal",
+        "biomarker_trend": "stable prediabetes",
+        "symptoms": "none reported"
+      }
+    },
+    {
+      "city": "Los Angeles, CA",
+      "start_date": "2025-09-01",
+      "end_date": null,
+      "duration_days": 106,
+      "avg_pm25": 34.5,
+      "avg_pm10": 58.1,
+      "avg_ozone": 0.089,
+      "data_source": "South Coast AQMD + EPA AirNow",
+      "address_type": "residential",
+      "neighborhood": "Westwood",
+      "coordinates": {
+        "latitude": 34.0633,
+        "longitude": -118.4456
+      },
+      "environmental_context": {
+        "urban_density": "very_high",
+        "traffic_proximity": "high (1 block from I-405 freeway)",
+        "industrial_proximity": "moderate",
+        "green_space": "low",
+        "air_quality_rating": "unhealthy_for_sensitive_groups"
+      },
+      "health_status_during_period": {
+        "baseline_inflammatory_state": "rapidly_deteriorating",
+        "biomarker_trend": "accelerating_toward_diabetes",
+        "symptoms": "fatigue, occasional headaches, increased thirst"
+      },
+      "exposure_delta_from_previous": {
+        "pm25_increase": 26.7,
+        "pm25_percent_change": 342,
+        "pm10_increase": 39.9,
+        "pm10_percent_change": 219,
+        "ozone_increase": 0.047,
+        "ozone_percent_change": 112,
+        "clinical_significance": "Dramatic increase in oxidative stress exposure. PM2.5 increase of 342% is sufficient to trigger inflammatory cascades in genetically susceptible individuals (GSTM1 null). Epidemiological data predicts +0.35% HbA1c increase for this exposure delta."
+      }
+    }
+  ],
+  "summary": {
+    "total_locations": 2,
+    "current_location": "Los Angeles, CA",
+    "major_environmental_transitions": [
+      {
+        "transition_date": "2025-09-01",
+        "from": "San Francisco, CA",
+        "to": "Los Angeles, CA",
+        "exposure_impact": "severe_increase",
+        "predicted_health_impact": "High risk for metabolic deterioration based on genetic profile and baseline prediabetes",
+        "actual_health_impact": "Confirmed rapid progression: HbA1c 5.9%→6.3% in 3 months"
+      }
+    ],
+    "cumulative_exposure_burden": {
+      "sf_period_exposure": "Low (5.5 years at 7.8 µg/m³ PM2.5)",
+      "la_period_exposure": "High (0.35 years at 34.5 µg/m³ PM2.5)",
+      "lifetime_weighted_average_pm25": 10.2
+    }
+  }
+}

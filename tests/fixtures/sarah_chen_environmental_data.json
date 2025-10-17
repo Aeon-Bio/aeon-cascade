@@ -1,0 +1,395 @@
+{
+  "user_id": "SARAH_CHEN_001",
+  "data_collection_period": {
+    "start_date": "2025-07-01",
+    "end_date": "2026-03-15",
+    "total_days": 258
+  },
+  "data_sources": [
+    "EPA AirNow API",
+    "South Coast Air Quality Management District",
+    "PurpleAir Community Sensors",
+    "NOAA Weather Data"
+  ],
+  "daily_measurements": {
+    "san_francisco_period": {
+      "location": "San Francisco, CA (Mission District)",
+      "period": "2025-07-01 to 2025-08-31",
+      "days": 62,
+      "sample_daily_readings": [
+        {
+          "date": "2025-07-01",
+          "pm25_24h_avg": 6.8,
+          "pm10_24h_avg": 16.2,
+          "ozone_8h_max": 0.038,
+          "aqi": 28,
+          "aqi_category": "Good",
+          "temperature_f": 67,
+          "humidity_pct": 72,
+          "wind_mph": 12
+        },
+        {
+          "date": "2025-07-15",
+          "pm25_24h_avg": 8.2,
+          "pm10_24h_avg": 18.5,
+          "ozone_8h_max": 0.045,
+          "aqi": 34,
+          "aqi_category": "Good",
+          "temperature_f": 71,
+          "humidity_pct": 68,
+          "wind_mph": 14
+        },
+        {
+          "date": "2025-08-01",
+          "pm25_24h_avg": 7.5,
+          "pm10_24h_avg": 17.8,
+          "ozone_8h_max": 0.041,
+          "aqi": 31,
+          "aqi_category": "Good",
+          "temperature_f": 69,
+          "humidity_pct": 70,
+          "wind_mph": 13
+        },
+        {
+          "date": "2025-08-15",
+          "pm25_24h_avg": 9.1,
+          "pm10_24h_avg": 19.6,
+          "ozone_8h_max": 0.046,
+          "aqi": 38,
+          "aqi_category": "Good",
+          "temperature_f": 73,
+          "humidity_pct": 65,
+          "wind_mph": 11
+        },
+        {
+          "date": "2025-08-31",
+          "pm25_24h_avg": 7.9,
+          "pm10_24h_avg": 18.1,
+          "ozone_8h_max": 0.043,
+          "aqi": 33,
+          "aqi_category": "Good",
+          "temperature_f": 70,
+          "humidity_pct": 71,
+          "wind_mph": 13
+        }
+      ],
+      "period_statistics": {
+        "pm25_mean": 7.8,
+        "pm25_std": 1.2,
+        "pm25_min": 5.1,
+        "pm25_max": 12.3,
+        "pm10_mean": 18.2,
+        "ozone_mean": 0.042,
+        "avg_aqi": 32,
+        "days_good_aqi": 62,
+        "days_moderate_aqi": 0,
+        "days_unhealthy_sensitive_aqi": 0
+      }
+    },
+    "los_angeles_period": {
+      "location": "Los Angeles, CA (Westwood, near I-405)",
+      "period": "2025-09-01 to 2026-03-15",
+      "days": 196,
+      "sample_daily_readings": [
+        {
+          "date": "2025-09-01",
+          "pm25_24h_avg": 28.3,
+          "pm10_24h_avg": 52.1,
+          "ozone_8h_max": 0.082,
+          "aqi": 85,
+          "aqi_category": "Moderate",
+          "temperature_f": 82,
+          "humidity_pct": 58,
+          "wind_mph": 6,
+          "notes": "First day in LA - immediate exposure increase"
+        },
+        {
+          "date": "2025-09-15",
+          "pm25_24h_avg": 32.6,
+          "pm10_24h_avg": 56.8,
+          "ozone_8h_max": 0.091,
+          "aqi": 94,
+          "aqi_category": "Moderate",
+          "temperature_f": 85,
+          "humidity_pct": 52,
+          "wind_mph": 5
+        },
+        {
+          "date": "2025-10-01",
+          "pm25_24h_avg": 35.2,
+          "pm10_24h_avg": 59.3,
+          "ozone_8h_max": 0.088,
+          "aqi": 99,
+          "aqi_category": "Moderate",
+          "temperature_f": 83,
+          "humidity_pct": 55,
+          "wind_mph": 6
+        },
+        {
+          "date": "2025-10-15",
+          "pm25_24h_avg": 38.7,
+          "pm10_24h_avg": 62.5,
+          "ozone_8h_max": 0.095,
+          "aqi": 108,
+          "aqi_category": "Unhealthy for Sensitive Groups",
+          "temperature_f": 86,
+          "humidity_pct": 48,
+          "wind_mph": 4,
+          "notes": "Poor air quality event - inversion layer"
+        },
+        {
+          "date": "2025-11-01",
+          "pm25_24h_avg": 31.8,
+          "pm10_24h_avg": 55.2,
+          "ozone_8h_max": 0.086,
+          "aqi": 92,
+          "aqi_category": "Moderate",
+          "temperature_f": 78,
+          "humidity_pct": 62,
+          "wind_mph": 7
+        },
+        {
+          "date": "2025-11-15",
+          "pm25_24h_avg": 33.5,
+          "pm10_24h_avg": 57.6,
+          "ozone_8h_max": 0.089,
+          "aqi": 96,
+          "aqi_category": "Moderate",
+          "temperature_f": 75,
+          "humidity_pct": 65,
+          "wind_mph": 6
+        },
+        {
+          "date": "2025-12-01",
+          "pm25_24h_avg": 36.9,
+          "pm10_24h_avg": 60.8,
+          "ozone_8h_max": 0.092,
+          "aqi": 104,
+          "aqi_category": "Unhealthy for Sensitive Groups",
+          "temperature_f": 72,
+          "humidity_pct": 68,
+          "wind_mph": 5
+        },
+        {
+          "date": "2025-12-15",
+          "pm25_24h_avg": 34.1,
+          "pm10_24h_avg": 58.3,
+          "ozone_8h_max": 0.087,
+          "aqi": 98,
+          "aqi_category": "Moderate",
+          "temperature_f": 70,
+          "humidity_pct": 70,
+          "wind_mph": 6,
+          "notes": "3-month bloodwork day - HbA1c 6.3%"
+        },
+        {
+          "date": "2026-01-01",
+          "pm25_24h_avg": 37.5,
+          "pm10_24h_avg": 61.2,
+          "ozone_8h_max": 0.091,
+          "aqi": 106,
+          "aqi_category": "Unhealthy for Sensitive Groups",
+          "temperature_f": 68,
+          "humidity_pct": 72,
+          "wind_mph": 5
+        },
+        {
+          "date": "2026-01-15",
+          "pm25_24h_avg": 35.8,
+          "pm10_24h_avg": 59.6,
+          "ozone_8h_max": 0.088,
+          "aqi": 102,
+          "aqi_category": "Unhealthy for Sensitive Groups",
+          "temperature_f": 67,
+          "humidity_pct": 74,
+          "wind_mph": 6
+        },
+        {
+          "date": "2026-02-01",
+          "pm25_24h_avg": 32.3,
+          "pm10_24h_avg": 56.1,
+          "ozone_8h_max": 0.085,
+          "aqi": 93,
+          "aqi_category": "Moderate",
+          "temperature_f": 69,
+          "humidity_pct": 68,
+          "wind_mph": 7
+        },
+        {
+          "date": "2026-02-15",
+          "pm25_24h_avg": 33.9,
+          "pm10_24h_avg": 57.8,
+          "ozone_8h_max": 0.087,
+          "aqi": 97,
+          "aqi_category": "Moderate",
+          "temperature_f": 71,
+          "humidity_pct": 65,
+          "wind_mph": 6
+        },
+        {
+          "date": "2026-03-01",
+          "pm25_24h_avg": 31.2,
+          "pm10_24h_avg": 54.8,
+          "ozone_8h_max": 0.084,
+          "aqi": 90,
+          "aqi_category": "Moderate",
+          "temperature_f": 73,
+          "humidity_pct": 62,
+          "wind_mph": 8
+        },
+        {
+          "date": "2026-03-15",
+          "pm25_24h_avg": 33.6,
+          "pm10_24h_avg": 57.4,
+          "ozone_8h_max": 0.086,
+          "aqi": 96,
+          "aqi_category": "Moderate",
+          "temperature_f": 75,
+          "humidity_pct": 60,
+          "wind_mph": 7,
+          "notes": "6-month outcome day - intervention results validation"
+        }
+      ],
+      "period_statistics": {
+        "pm25_mean": 34.5,
+        "pm25_std": 3.8,
+        "pm25_min": 22.1,
+        "pm25_max": 48.3,
+        "pm10_mean": 58.1,
+        "ozone_mean": 0.089,
+        "avg_aqi": 98,
+        "days_good_aqi": 0,
+        "days_moderate_aqi": 142,
+        "days_unhealthy_sensitive_aqi": 54,
+        "days_unhealthy_aqi": 0,
+        "exceedance_events": 54
+      }
+    }
+  },
+  "monthly_aggregations": [
+    {
+      "month": "2025-07",
+      "location": "San Francisco",
+      "pm25_monthly_avg": 7.6,
+      "pm10_monthly_avg": 17.9,
+      "ozone_monthly_avg": 0.041,
+      "avg_aqi": 31
+    },
+    {
+      "month": "2025-08",
+      "location": "San Francisco",
+      "pm25_monthly_avg": 8.1,
+      "pm10_monthly_avg": 18.6,
+      "ozone_monthly_avg": 0.043,
+      "avg_aqi": 33
+    },
+    {
+      "month": "2025-09",
+      "location": "Los Angeles",
+      "pm25_monthly_avg": 33.2,
+      "pm10_monthly_avg": 56.8,
+      "ozone_monthly_avg": 0.088,
+      "avg_aqi": 96,
+      "transition_month": true
+    },
+    {
+      "month": "2025-10",
+      "location": "Los Angeles",
+      "pm25_monthly_avg": 35.8,
+      "pm10_monthly_avg": 59.6,
+      "ozone_monthly_avg": 0.091,
+      "avg_aqi": 101
+    },
+    {
+      "month": "2025-11",
+      "location": "Los Angeles",
+      "pm25_monthly_avg": 33.6,
+      "pm10_monthly_avg": 57.2,
+      "ozone_monthly_avg": 0.087,
+      "avg_aqi": 96
+    },
+    {
+      "month": "2025-12",
+      "location": "Los Angeles",
+      "pm25_monthly_avg": 35.1,
+      "pm10_monthly_avg": 58.8,
+      "ozone_monthly_avg": 0.089,
+      "avg_aqi": 99,
+      "health_event": "3-month bloodwork - HbA1c 6.3%"
+    },
+    {
+      "month": "2026-01",
+      "location": "Los Angeles",
+      "pm25_monthly_avg": 36.2,
+      "pm10_monthly_avg": 60.1,
+      "ozone_monthly_avg": 0.090,
+      "avg_aqi": 103
+    },
+    {
+      "month": "2026-02",
+      "location": "Los Angeles",
+      "pm25_monthly_avg": 33.8,
+      "pm10_monthly_avg": 57.5,
+      "ozone_monthly_avg": 0.086,
+      "avg_aqi": 97
+    },
+    {
+      "month": "2026-03",
+      "location": "Los Angeles",
+      "pm25_monthly_avg": 32.9,
+      "pm10_monthly_avg": 56.3,
+      "ozone_monthly_avg": 0.085,
+      "avg_aqi": 94,
+      "health_event": "6-month outcome - intervention validation"
+    }
+  ],
+  "exposure_summary": {
+    "sf_period_exposure": {
+      "duration_days": 62,
+      "cumulative_pm25_exposure": 483.6,
+      "avg_daily_pm25": 7.8,
+      "health_risk_level": "minimal"
+    },
+    "la_period_exposure": {
+      "duration_days": 196,
+      "cumulative_pm25_exposure": 6762.0,
+      "avg_daily_pm25": 34.5,
+      "health_risk_level": "moderate_to_high_for_sensitive_individuals"
+    },
+    "total_exposure_increase": {
+      "pm25_delta": 26.7,
+      "pm25_percent_increase": 342,
+      "pm10_delta": 39.9,
+      "pm10_percent_increase": 219,
+      "ozone_delta": 0.047,
+      "ozone_percent_increase": 112
+    }
+  },
+  "health_correlation_analysis": {
+    "biomarker_to_exposure_correlations": {
+      "hba1c_vs_pm25": {
+        "correlation_coefficient": 0.94,
+        "p_value": 0.001,
+        "interpretation": "Strong positive correlation - PM2.5 exposure highly predictive of HbA1c increase"
+      },
+      "8_ohdg_vs_pm25": {
+        "correlation_coefficient": 0.97,
+        "p_value": 0.0001,
+        "interpretation": "Very strong correlation - oxidative stress marker directly tracks PM2.5 exposure"
+      },
+      "crp_vs_pm25": {
+        "correlation_coefficient": 0.89,
+        "p_value": 0.005,
+        "interpretation": "Strong correlation - systemic inflammation driven by PM2.5"
+      }
+    },
+    "predicted_vs_actual": {
+      "model_accuracy": "94-98%",
+      "validation_notes": "Aeon model predictions closely matched observed biomarker changes based on environmental exposure data and genetic profile"
+    }
+  },
+  "clinical_significance": {
+    "summary": "Patient's 342% increase in PM2.5 exposure (7.8→34.5 µg/m³) upon relocating from San Francisco to Los Angeles created sustained oxidative stress burden. Combined with GSTM1 null genetic variant (impaired antioxidant defense) and baseline prediabetes, this environmental transition triggered rapid metabolic deterioration: HbA1c increased 0.4% in 3 months, insulin resistance worsened 46%, and oxidative stress marker doubled. Environmental data strongly validates Aeon's causal prediction model linking gene-environment interactions to disease progression.",
+    "intervention_context": "HEPA filtration intervention (implemented month 4) reduced indoor PM2.5 exposure by ~70%, contributing to stabilization of biomarker trajectory in final months. Combined with NAC supplementation and metformin, environmental exposure reduction was critical component of diabetes prevention strategy."
+  }
+}

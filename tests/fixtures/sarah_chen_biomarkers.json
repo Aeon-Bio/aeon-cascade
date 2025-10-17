@@ -1,0 +1,272 @@
+{
+  "patient_id": "SARAH_CHEN_001",
+  "patient_info": {
+    "name": "Sarah Chen",
+    "age": 32,
+    "sex": "Female",
+    "ethnicity": "Asian American",
+    "occupation": "Software Engineer"
+  },
+  "biomarker_results": [
+    {
+      "timepoint": "baseline_sf",
+      "collection_date": "2025-07-15",
+      "location": "San Francisco, CA",
+      "lab": "Quest Diagnostics",
+      "lab_order_id": "LAB-2025-071501",
+      "fasting_status": "10 hours fasting",
+      "markers": {
+        "glycemic_control": {
+          "hba1c": {
+            "value": 5.9,
+            "unit": "%",
+            "reference_range": "< 5.7% (normal), 5.7-6.4% (prediabetes), ≥6.5% (diabetes)",
+            "status": "prediabetes",
+            "clinical_significance": "Elevated risk for Type 2 Diabetes progression"
+          },
+          "fasting_glucose": {
+            "value": 105,
+            "unit": "mg/dL",
+            "reference_range": "< 100 (normal), 100-125 (impaired fasting glucose), ≥126 (diabetes)",
+            "status": "impaired_fasting_glucose",
+            "clinical_significance": "Prediabetic range"
+          },
+          "fasting_insulin": {
+            "value": 14.2,
+            "unit": "µU/mL",
+            "reference_range": "2.6-24.9 µU/mL",
+            "status": "upper_normal",
+            "clinical_significance": "Suggests insulin resistance"
+          },
+          "homa_ir": {
+            "value": 3.7,
+            "unit": "index",
+            "reference_range": "< 2.0 (insulin sensitive), 2.0-3.0 (early IR), > 3.0 (insulin resistant)",
+            "status": "insulin_resistant",
+            "clinical_significance": "Significant insulin resistance present",
+            "calculation": "(fasting_glucose * fasting_insulin) / 405"
+          }
+        },
+        "inflammatory_markers": {
+          "crp": {
+            "value": 0.7,
+            "unit": "mg/L",
+            "reference_range": "< 1.0 (low CV risk), 1.0-3.0 (average), > 3.0 (high)",
+            "status": "normal",
+            "clinical_significance": "Low cardiovascular risk"
+          },
+          "il6": {
+            "value": 1.1,
+            "unit": "pg/mL",
+            "reference_range": "< 1.8 pg/mL",
+            "status": "normal",
+            "clinical_significance": "No chronic inflammation detected"
+          },
+          "tnf_alpha": {
+            "value": 2.3,
+            "unit": "pg/mL",
+            "reference_range": "< 2.8 pg/mL",
+            "status": "normal",
+            "clinical_significance": "Normal inflammatory cytokine levels"
+          }
+        },
+        "oxidative_stress": {
+          "8_ohdg": {
+            "value": 4.2,
+            "unit": "ng/mL",
+            "reference_range": "< 5.0 ng/mL (normal), 5.0-8.0 (elevated), > 8.0 (high)",
+            "status": "normal",
+            "clinical_significance": "No significant oxidative DNA damage"
+          }
+        },
+        "lipid_panel": {
+          "triglycerides": {
+            "value": 142,
+            "unit": "mg/dL",
+            "reference_range": "< 150 mg/dL",
+            "status": "upper_normal"
+          },
+          "hdl": {
+            "value": 52,
+            "unit": "mg/dL",
+            "reference_range": "> 50 mg/dL (female)",
+            "status": "normal"
+          },
+          "ldl": {
+            "value": 118,
+            "unit": "mg/dL",
+            "reference_range": "< 100 (optimal), 100-129 (near optimal)",
+            "status": "near_optimal"
+          }
+        },
+        "metabolic_markers": {
+          "adiponectin": {
+            "value": 8.2,
+            "unit": "µg/mL",
+            "reference_range": "> 10 µg/mL (protective)",
+            "status": "low",
+            "clinical_significance": "Low adiponectin associated with insulin resistance"
+          },
+          "alt": {
+            "value": 32,
+            "unit": "U/L",
+            "reference_range": "7-56 U/L",
+            "status": "normal"
+          }
+        }
+      },
+      "clinical_interpretation": "Patient presents with prediabetes (HbA1c 5.9%, IFG 105 mg/dL) and insulin resistance (HOMA-IR 3.7) despite normal inflammatory markers. Low adiponectin and borderline lipids suggest metabolic dysfunction. Genetic profile (GSTM1 null, TCF7L2 variant) increases Type 2 Diabetes risk. Environmental exposures in San Francisco are minimal (PM2.5 ~8 µg/m³), masking oxidative stress vulnerability.",
+      "risk_assessment": {
+        "5_year_t2dm_risk": "40%",
+        "10_year_cvd_risk": "2%",
+        "metabolic_syndrome": false
+      }
+    },
+    {
+      "timepoint": "3_month_followup_la",
+      "collection_date": "2025-12-15",
+      "location": "Los Angeles, CA",
+      "lab": "LabCorp",
+      "lab_order_id": "LAB-2025-121502",
+      "fasting_status": "10 hours fasting",
+      "days_since_baseline": 153,
+      "days_since_la_move": 105,
+      "markers": {
+        "glycemic_control": {
+          "hba1c": {
+            "value": 6.3,
+            "unit": "%",
+            "reference_range": "< 5.7% (normal), 5.7-6.4% (prediabetes), ≥6.5% (diabetes)",
+            "status": "prediabetes_high",
+            "delta_from_baseline": 0.4,
+            "clinical_significance": "Rapid progression toward diabetes threshold - 0.2% away from diagnostic criteria"
+          },
+          "fasting_glucose": {
+            "value": 119,
+            "unit": "mg/dL",
+            "reference_range": "< 100 (normal), 100-125 (impaired fasting glucose), ≥126 (diabetes)",
+            "status": "impaired_fasting_glucose",
+            "delta_from_baseline": 14,
+            "clinical_significance": "Worsening glucose control"
+          },
+          "fasting_insulin": {
+            "value": 18.6,
+            "unit": "µU/mL",
+            "reference_range": "2.6-24.9 µU/mL",
+            "status": "elevated",
+            "delta_from_baseline": 4.4,
+            "clinical_significance": "Compensatory hyperinsulinemia due to worsening insulin resistance"
+          },
+          "homa_ir": {
+            "value": 5.4,
+            "unit": "index",
+            "reference_range": "< 2.0 (insulin sensitive), 2.0-3.0 (early IR), > 3.0 (insulin resistant)",
+            "status": "severe_insulin_resistance",
+            "delta_from_baseline": 1.7,
+            "delta_percent": 46,
+            "clinical_significance": "Significant worsening of insulin resistance (+46% from baseline)"
+          }
+        },
+        "inflammatory_markers": {
+          "crp": {
+            "value": 2.1,
+            "unit": "mg/L",
+            "reference_range": "< 1.0 (low CV risk), 1.0-3.0 (average), > 3.0 (high)",
+            "status": "average_risk",
+            "delta_from_baseline": 1.4,
+            "delta_percent": 200,
+            "clinical_significance": "Tripled from baseline - systemic inflammation developing"
+          },
+          "il6": {
+            "value": 3.1,
+            "unit": "pg/mL",
+            "reference_range": "< 1.8 pg/mL",
+            "status": "elevated",
+            "delta_from_baseline": 2.0,
+            "delta_percent": 182,
+            "clinical_significance": "Marked elevation suggesting chronic inflammatory state"
+          },
+          "tnf_alpha": {
+            "value": 3.6,
+            "unit": "pg/mL",
+            "reference_range": "< 2.8 pg/mL",
+            "status": "elevated",
+            "delta_from_baseline": 1.3,
+            "delta_percent": 57,
+            "clinical_significance": "Elevated TNF-α contributes to insulin resistance via IRS-1 inhibition"
+          }
+        },
+        "oxidative_stress": {
+          "8_ohdg": {
+            "value": 8.6,
+            "unit": "ng/mL",
+            "reference_range": "< 5.0 ng/mL (normal), 5.0-8.0 (elevated), > 8.0 (high)",
+            "status": "high",
+            "delta_from_baseline": 4.4,
+            "delta_percent": 105,
+            "clinical_significance": "Doubled from baseline - severe oxidative DNA damage from PM2.5 exposure"
+          }
+        },
+        "lipid_panel": {
+          "triglycerides": {
+            "value": 168,
+            "unit": "mg/dL",
+            "reference_range": "< 150 mg/dL",
+            "status": "elevated",
+            "delta_from_baseline": 26
+          },
+          "hdl": {
+            "value": 48,
+            "unit": "mg/dL",
+            "reference_range": "> 50 mg/dL (female)",
+            "status": "borderline_low",
+            "delta_from_baseline": -4
+          },
+          "ldl": {
+            "value": 128,
+            "unit": "mg/dL",
+            "reference_range": "< 100 (optimal), 100-129 (near optimal)",
+            "status": "borderline_high",
+            "delta_from_baseline": 10
+          }
+        },
+        "metabolic_markers": {
+          "adiponectin": {
+            "value": 6.8,
+            "unit": "µg/mL",
+            "reference_range": "> 10 µg/mL (protective)",
+            "status": "low",
+            "delta_from_baseline": -1.4,
+            "delta_percent": -17,
+            "clinical_significance": "Further decline in protective adiponectin"
+          },
+          "alt": {
+            "value": 41,
+            "unit": "U/L",
+            "reference_range": "7-56 U/L",
+            "status": "upper_normal",
+            "delta_from_baseline": 9,
+            "clinical_significance": "Rising ALT suggests early fatty liver development"
+          }
+        }
+      },
+      "clinical_interpretation": "ALARM: Rapid metabolic deterioration over 3 months in Los Angeles. HbA1c increased 0.4% (5.9→6.3%), approaching diabetes threshold. HOMA-IR worsened 46% (3.7→5.4), indicating severe insulin resistance. Inflammatory markers dramatically elevated (CRP +200%, IL-6 +182%). Oxidative stress marker doubled (8-OHdG: 4.2→8.6 ng/mL), consistent with PM2.5 exposure increase (7.8→34.5 µg/m³). Patient's GSTM1 null genotype amplifying oxidative stress vulnerability. Trajectory predicts Type 2 Diabetes diagnosis within 3-6 months without intervention.",
+      "risk_assessment": {
+        "3_month_t2dm_risk": "65%",
+        "6_month_t2dm_risk": "85%",
+        "10_year_cvd_risk": "8%",
+        "metabolic_syndrome": true,
+        "progression_rate": "unusually_rapid"
+      },
+      "physician_notes": "Discussed rapid progression with patient. Emphasized urgency of lifestyle intervention. Considering metformin initiation if HbA1c continues to rise. Recommend 3-month follow-up bloodwork."
+    }
+  ],
+  "trajectory_analysis": {
+    "hba1c_velocity": "+0.013% per day",
+    "predicted_diabetes_diagnosis_date": "2026-03-15",
+    "days_to_diabetes_threshold": 92,
+    "environmental_correlation": "Strong correlation with PM2.5 exposure (R²=0.94)",
+    "genetic_amplification_factor": 1.6,
+    "intervention_urgency": "HIGH"
+  }
+}
