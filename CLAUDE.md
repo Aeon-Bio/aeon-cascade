@@ -92,15 +92,19 @@ User Request → FastAPI → LangGraph Workflow
 
 ### INDRA Integration Strategy
 
+**API Reference**: Full INDRA Network Search OpenAPI specification available at `indra_agent/schemas/indra_openapi.json`
+
 **Entity Grounding** (`indra_agent/services/grounding_service.py`):
 - Pre-defined mappings for common entities (CRP → HGNC:2367, PM2.5 → MESH:D052638)
 - Fallback to INDRA grounding API for unknown entities
 - Database priority: HGNC (genes) > MESH (chemicals) > GO (processes) > CHEBI
 
 **Path Discovery** (`indra_agent/services/indra_service.py`):
-- Multi-strategy: direct path search + neighborhood expansion
+- Uses INDRA Network Search API POST /api/query endpoint
+- Queries with NetworkSearchQuery schema (source, target, depth_limit, weighted="belief")
+- Parses Results → PathResultData → paths[source] → Path objects with edge_data
+- Falls back to cached responses in `config/cached_responses.py` for demo reliability
 - Ranks paths by: evidence count (40%), belief score (30%), path length (30%)
-- Caches responses in `config/cached_responses.py` for demo reliability
 
 **Graph Construction** (`indra_agent/services/graph_builder.py`):
 - Converts INDRA paths to API-compliant causal graphs
@@ -129,7 +133,7 @@ Required:
 
 Optional:
 - `IQAIR_API_KEY`: Real-time pollution data
-- `INDRA_BASE_URL`: Default https://db.indra.bio
+- `INDRA_BASE_URL`: Default https://network.indra.bio
 - `APP_PORT`: Default 8000
 
 ### Agent Prompts (config/agent_config.py)
