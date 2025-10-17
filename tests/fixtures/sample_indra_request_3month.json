@@ -1,0 +1,53 @@
+{
+  "request_id": "demo_sarah_chen_3month_followup",
+  "user_context": {
+    "user_id": "SARAH_CHEN_001",
+    "genetics": {
+      "GSTM1": "null/null",
+      "GSTP1": "Val/Val",
+      "TNF_alpha": "G/A",
+      "SOD2": "Ala/Ala",
+      "TCF7L2": "C/T",
+      "MTHFR": "C/T"
+    },
+    "current_biomarkers": {
+      "HbA1c": 6.3,
+      "fasting_glucose": 119,
+      "fasting_insulin": 18.6,
+      "HOMA-IR": 5.4,
+      "CRP": 2.1,
+      "IL-6": 3.1,
+      "TNF-alpha": 3.6,
+      "8-OHdG": 8.6,
+      "triglycerides": 168,
+      "HDL": 48,
+      "LDL": 128,
+      "adiponectin": 6.8,
+      "ALT": 41
+    },
+    "location_history": [
+      {
+        "city": "San Francisco, CA",
+        "start_date": "2020-01-15",
+        "end_date": "2025-08-31",
+        "avg_pm25": 7.8
+      },
+      {
+        "city": "Los Angeles, CA",
+        "start_date": "2025-09-01",
+        "end_date": null,
+        "avg_pm25": 34.5
+      }
+    ]
+  },
+  "query": {
+    "text": "What interventions can prevent me from developing diabetes?",
+    "intent": "intervention",
+    "focus_biomarkers": ["HbA1c", "HOMA-IR", "CRP", "IL-6", "8-OHdG"]
+  },
+  "options": {
+    "max_graph_depth": 4,
+    "min_evidence_count": 2,
+    "include_interventions": true
+  }
+}
