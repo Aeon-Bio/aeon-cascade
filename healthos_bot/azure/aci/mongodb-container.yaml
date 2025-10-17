@@ -1,0 +1,41 @@
+apiVersion: '2021-03-01'
+location: eastus
+name: vibecoding-mongodb
+properties:
+  containers:
+  - name: mongodb
+    properties:
+      image: mongo:7.0
+      resources:
+        requests:
+          cpu: 1.0
+          memoryInGb: 2.0
+      ports:
+      - port: 27017
+        protocol: TCP
+      environmentVariables:
+      - name: MONGO_INITDB_DATABASE
+        value: vibecoding_bot
+      - name: MONGO_INITDB_ROOT_USERNAME
+        secureValue: admin
+      - name: MONGO_INITDB_ROOT_PASSWORD
+        secureValue: vibecoding2024
+      volumeMounts:
+      - name: mongodb-data
+        mountPath: /data/db
+        readOnly: false
+  osType: Linux
+  restartPolicy: Always
+  volumes:
+  - name: mongodb-data
+    azureFile:
+      shareName: mongodb-data
+      storageAccountName: '{STORAGE_ACCOUNT_NAME}'
+      storageAccountKey: '{STORAGE_ACCOUNT_KEY}'
+  networkProfile:
+    id: /subscriptions/{AZURE_SUBSCRIPTION_ID}/resourceGroups/{AZURE_RESOURCE_GROUP}/providers/Microsoft.Network/networkProfiles/vibecoding-networkProfile
+tags:
+  project: vibecoding-bot
+  component: database
+  environment: production
+type: Microsoft.ContainerInstance/containerGroups
