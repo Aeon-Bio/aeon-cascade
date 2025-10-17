@@ -1,0 +1,33 @@
+apiVersion: '2021-03-01'
+location: eastus
+name: vibecoding-bot
+properties:
+  containers:
+  - name: vibecoding-bot
+    properties:
+      image: frontiertower.azurecr.io/vibecoding-bot:latest
+      resources:
+        requests:
+          cpu: 1.0
+          memoryInGb: 1.5
+      environmentVariables:
+      - name: PYTHONUNBUFFERED
+        value: '1'
+      - name: TELEGRAM_TOKEN
+        secureValue: '{TELEGRAM_TOKEN}'
+      - name: OPENAI_API_KEY
+        secureValue: '{OPENAI_API_KEY}'
+      - name: MONGODB_URI
+        secureValue: '{MONGODB_URI}'
+  osType: Linux
+  restartPolicy: Always
+  imageRegistryCredentials:
+  - server: frontiertower.azurecr.io
+    username: '{ACR_USERNAME}'
+    password: '{ACR_PASSWORD}'
+  networkProfile:
+    id: /subscriptions/{AZURE_SUBSCRIPTION_ID}/resourceGroups/{AZURE_RESOURCE_GROUP}/providers/Microsoft.Network/networkProfiles/vibecoding-networkProfile
+tags:
+  project: vibecoding-bot
+  environment: production
+type: Microsoft.ContainerInstance/containerGroups
