@@ -168,6 +168,7 @@ async def create_indra_query_agent(handoff_tools=None):
         tools=all_tools,
         state_schema=OverallState,
         prompt=config.system_prompt,
+        name="indra_query_agent",  # Required by langgraph_supervisor
     )
 
     logger.info("INDRA query ReAct agent created successfully")

@@ -21,7 +21,7 @@ from indra_agent.core.models import (
     CausalDiscoveryRequest,
     Query,
     UserContext,
-    QueryOptions,
+    RequestOptions,
 )
 
 
@@ -60,7 +60,7 @@ async def test_e2e_with_mesh_enrichment_pm25_to_crp(client):
             current_biomarkers={"CRP": 5.2},
             genetics={}
         ),
-        options=QueryOptions(max_graph_depth=4)
+        options=RequestOptions(max_graph_depth=4)
     )
 
     response = await client.process_request(request)
@@ -114,7 +114,7 @@ async def test_e2e_with_mesh_enrichment_il6_pathway(client):
             current_biomarkers={"IL-6": 15.3, "CRP": 4.8},
             genetics={}
         ),
-        options=QueryOptions(max_graph_depth=5)
+        options=RequestOptions(max_graph_depth=5)
     )
 
     response = await client.process_request(request)
@@ -165,7 +165,7 @@ async def test_e2e_mesh_enrichment_improves_grounding(client):
             current_biomarkers={"8-OHdG": 25.0},
             genetics={}
         ),
-        options=QueryOptions(max_graph_depth=4)
+        options=RequestOptions(max_graph_depth=4)
     )
 
     response = await client.process_request(request)
@@ -203,7 +203,7 @@ async def test_e2e_mesh_enrichment_with_synonyms(client):
             current_biomarkers={},
             genetics={}
         ),
-        options=QueryOptions(max_graph_depth=3)
+        options=RequestOptions(max_graph_depth=3)
     )
 
     response = await client.process_request(request)
@@ -253,7 +253,7 @@ async def test_e2e_mesh_enrichment_timing(client):
             current_biomarkers={},
             genetics={}
         ),
-        options=QueryOptions(max_graph_depth=3)
+        options=RequestOptions(max_graph_depth=3)
     )
 
     response = await client.process_request(request)
@@ -294,7 +294,7 @@ async def test_e2e_mesh_fallback_when_not_found(client):
             current_biomarkers={},
             genetics={}
         ),
-        options=QueryOptions(max_graph_depth=2)
+        options=RequestOptions(max_graph_depth=2)
     )
 
     response = await client.process_request(request)
@@ -331,7 +331,7 @@ async def test_e2e_mesh_enrichment_genetic_modifiers(client):
                 "NQO1_C609T": "TT"   # NAD(P)H quinone oxidoreductase variant
             }
         ),
-        options=QueryOptions(max_graph_depth=4)
+        options=RequestOptions(max_graph_depth=4)
     )
 
     response = await client.process_request(request)
