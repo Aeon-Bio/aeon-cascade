@@ -1,0 +1,158 @@
+version: '3.8'
+
+services:
+  # =============================================================================
+  # INDRA Agent: LangGraph-based multi-agent system for bio-ontology queries
+  # =============================================================================
+  indra-agent:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: indra-agent
+    ports:
+      - "8000:8000"
+    environment:
+      # AWS Bedrock credentials (REQUIRED)
+      - AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID}
+      - AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY}
+      - AWS_REGION=${AWS_REGION:-us-east-1}
+
+      # Optional API keys
+      - IQAIR_API_KEY=${IQAIR_API_KEY:-}
+      - WRITER_API_KEY=${WRITER_API_KEY:-}
+
+      # Application settings
+      - APP_HOST=0.0.0.0
+      - APP_PORT=8000
+      - LOG_LEVEL=${LOG_LEVEL:-INFO}
+
+      # INDRA settings
+      - INDRA_BASE_URL=${INDRA_BASE_URL:-https://network.indra.bio}
+      - INDRA_TIMEOUT=${INDRA_TIMEOUT:-30}
+      - INDRA_CACHE_TTL=${INDRA_CACHE_TTL:-3600}
+
+      # Agent settings
+      - AGENT_MODEL=${AGENT_MODEL:-us.anthropic.claude-sonnet-4-5-20250929-v1:0}
+      - AGENT_TEMPERATURE=${AGENT_TEMPERATURE:-0}
+
+    volumes:
+      # Optional: Mount .env file for local development
+      # Uncomment if you want to use .env file instead of environment variables
+      # - ./.env:/opt/app/.env:ro
+
+      # Optional: Mount source code for development (hot-reload not supported in distroless)
+      # - ./indra_agent:/opt/app/indra_agent:ro
+
+    healthcheck:
+      test: ["CMD-SHELL", "python -c 'import httpx; httpx.get(\"http://localhost:8000/health\", timeout=5.0)'"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 15s
+
+    restart: unless-stopped
+
+    networks:
+      - digitalme-network
+
+    # Security context: Run as non-root user (Chainguard default UID 65532)
+    security_opt:
+      - no-new-privileges:true
+
+    # Resource limits (adjust based on your needs)
+    deploy:
+      resources:
+        limits:
+          cpus: '2.0'
+          memory: 2G
+        reservations:
+          cpus: '0.5'
+          memory: 512M
+
+  # =============================================================================
+  # Aeon Gateway: Temporal Bayesian modeling service
+  # =============================================================================
+  aeon-gateway:
+    build:
+      context: ./aeon-gateway
+      dockerfile: Dockerfile
+    container_name: aeon-gateway
+    ports:
+      - "8001:8001"
+    environment:
+      # URL to INDRA agent service
+      - AGENTIC_SYSTEM_URL=http://indra-agent:8000
+      - LOG_LEVEL=${LOG_LEVEL:-INFO}
+
+    volumes:
+      # Optional: Mount .env file for local development
+      # - ./aeon-gateway/.env:/opt/app/.env:ro
+
+      # Optional: Mount source code for development
+      # - ./aeon-gateway/src:/opt/app/src:ro
+
+    healthcheck:
+      test: ["CMD-SHELL", "python -c 'import httpx; httpx.get(\"http://localhost:8001/health\", timeout=5.0)'"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+
+    depends_on:
+      indra-agent:
+        condition: service_healthy
+
+    restart: unless-stopped
+
+    networks:
+      - digitalme-network
+
+    # Security context: Run as non-root user
+    security_opt:
+      - no-new-privileges:true
+
+    # Resource limits
+    deploy:
+      resources:
+        limits:
+          cpus: '1.0'
+          memory: 1G
+        reservations:
+          cpus: '0.25'
+          memory: 256M
+
+networks:
+  digitalme-network:
+    driver: bridge
+    name: digitalme-network
+
+# =============================================================================
+# Usage Instructions
+# =============================================================================
+#
+# 1. Create .env file with AWS credentials:
+#    cp .env.example .env
+#    # Edit .env and add your AWS_ACCESS_KEY_ID and AWS_SECRET_ACCESS_KEY
+#
+# 2. Build and start all services:
+#    docker-compose up --build
+#
+# 3. Access services:
+#    - INDRA Agent: http://localhost:8000/docs
+#    - Aeon Gateway: http://localhost:8001/docs
+#
+# 4. Check health:
+#    curl http://localhost:8000/health
+#    curl http://localhost:8001/health
+#
+# 5. View logs:
+#    docker-compose logs -f indra-agent
+#    docker-compose logs -f aeon-gateway
+#
+# 6. Stop services:
+#    docker-compose down
+#
+# 7. Rebuild after code changes:
+#    docker-compose up --build
+#
+# =============================================================================

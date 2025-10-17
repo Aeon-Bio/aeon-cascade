@@ -108,7 +108,7 @@ class INDRAService:
 
         try:
             url = f"{self.base_url}/api/node-name-in-graph"
-            params = {"name": name}
+            params = {"node-name": name}  # Fixed: OpenAPI schema requires "node-name" not "name"
 
             response = await self.client.get(url, params=params)
             response.raise_for_status()
@@ -143,8 +143,16 @@ class INDRAService:
             return self.entity_cache[cache_key]
 
         try:
+            # Parse CURIE format to db-name and db-id
+            if ":" not in node_id:
+                logger.warning(f"Node ID not in CURIE format: {node_id}")
+                return None
+
+            db_name, db_id = node_id.split(":", 1)
+
             url = f"{self.base_url}/api/node-id-in-graph"
-            params = {"id": node_id}
+            # Fixed: OpenAPI schema requires "db-name" and "db-id" not "id"
+            params = {"db-name": db_name.lower(), "db-id": db_id}
 
             response = await self.client.get(url, params=params)
             response.raise_for_status()
@@ -256,18 +264,16 @@ class INDRAService:
     ) -> List[Dict[str, Any]]:
         """Find causal paths between source and target entities.
 
-        This method attempts to:
-        1. Ground entities using Network Search API
-        2. Check pre-cached responses
-        3. Fallback to empty result if no paths found
-
-        Note: The Network Search API does not support path search.
-        We rely on pre-cached responses for path discovery.
+        This method:
+        1. Checks runtime cache
+        2. Checks pre-cached responses
+        3. Queries INDRA Network Search API /query endpoint
+        4. Parses response according to OpenAPI schema
 
         Args:
-            source: Source entity ID (e.g., "PM2.5")
-            target: Target entity ID (e.g., "IL6")
-            max_depth: Maximum path length
+            source: Source entity name (e.g., "PM2.5")
+            target: Target entity name (e.g., "CRP")
+            max_depth: Maximum path depth (depth_limit parameter)
             use_cache: Whether to use cached responses
 
         Returns:
@@ -279,115 +285,176 @@ class INDRAService:
             logger.info(f"Using cached path for {source} → {target}")
             return self.cache[cache_key]
 
-        # Try to ground entities using Network Search API
-        logger.info(f"Attempting to ground entities: {source}, {target}")
-        source_grounded = await self.ground_entity(source)
-        target_grounded = await self.ground_entity(target)
-
-        if source_grounded:
-            logger.info(f"Grounded source '{source}' to: {source_grounded.get('name', 'unknown')}")
-        if target_grounded:
-            logger.info(f"Grounded target '{target}' to: {target_grounded.get('name', 'unknown')}")
-
-        # Try pre-cached responses
+        # Try pre-cached responses first
         cached = get_cached_path(source, target)
-        if cached:
+        if cached and use_cache:
             logger.info(f"Using pre-cached path for {source} → {target}")
             self.cache[cache_key] = cached
             return cached
 
-        # Network Search API does not support path search
-        # Log warning and fallback to empty result
-        logger.warning(
-            f"No pre-cached paths available for {source} → {target}. "
-            "Network Search API does not provide path search functionality."
-        )
+        # Query live INDRA Network Search API
+        logger.info(f"Querying INDRA Network Search API: {source} → {target}")
+        try:
+            paths = await self._query_path_search(source, target, max_depth)
+            if paths:
+                self.cache[cache_key] = paths
+                logger.info(f"Found {len(paths)} paths from {source} → {target}")
+                return paths
+        except Exception as e:
+            logger.error(f"Error querying INDRA API: {e}")
 
         # Fallback to empty result
+        logger.warning(f"No paths found for {source} → {target}")
         return []
 
     async def _query_path_search(
         self, source: str, target: str, max_depth: int
     ) -> List[Dict[str, Any]]:
-        """DEPRECATED: Path search endpoint is not available in Network Search API.
+        """Query INDRA Network Search API for causal paths.
 
-        The Network Search API at network.indra.bio does not provide path search
-        functionality. This method is kept for backward compatibility but always
-        returns an empty list.
+        Uses POST /api/query endpoint with NetworkSearchQuery schema.
 
         Args:
-            source: Source entity in INDRA format (e.g., "MESH:D052638")
-            target: Target entity in INDRA format (e.g., "HGNC:6018")
-            max_depth: Maximum path length
+            source: Source entity name (e.g., "PM2.5")
+            target: Target entity name (e.g., "CRP")
+            max_depth: Maximum path depth (depth_limit parameter)
 
         Returns:
-            Empty list (path search not supported)
+            List of path dicts with nodes and edges (parsed from OpenAPI response)
         """
-        logger.warning(
-            "Path search endpoint is not available in Network Search API. "
-            "Using pre-cached responses only."
-        )
-        return []
+        try:
+            url = f"{self.base_url}/api/query"
+
+            # Build NetworkSearchQuery according to OpenAPI schema
+            query_payload = {
+                "source": source,
+                "target": target,
+                "depth_limit": max_depth,
+                "weighted": "belief",  # Use belief scores for path weighting
+                "belief_cutoff": 0.5,  # Filter low-confidence edges
+                "k_shortest": 10,  # Get top 10 paths
+                "filter_curated": True,  # Prefer curated sources
+                "curated_db_only": False,  # But don't exclude non-curated
+                "fplx_expand": True,  # Expand protein families
+                "format": "json"
+            }
+
+            logger.info(f"POST {url} with query: {source} → {target}")
+            response = await self.client.post(url, json=query_payload, timeout=30.0)
+            response.raise_for_status()
+
+            data = response.json()
+
+            # Parse response according to OpenAPI Results schema
+            return self._parse_path_response(data)
+
+        except httpx.HTTPError as e:
+            logger.error(f"HTTP error querying INDRA path search: {e}")
+            return []
+        except Exception as e:
+            logger.error(f"Error querying INDRA path search: {e}")
+            return []
 
     def _parse_path_response(self, data: Dict) -> List[Dict[str, Any]]:
-        """Parse INDRA path search response.
+        """Parse INDRA Network Search API response according to OpenAPI schema.
+
+        Response structure: Results → PathResultData → paths[source_name][] → Path
+        Each Path has: path (array of Nodes), edge_data (array of EdgeData)
 
         Args:
-            data: Raw response from INDRA API
+            data: Raw response from INDRA API (Results schema)
 
         Returns:
-            List of parsed path dicts
+            List of parsed path dicts with nodes and edges
         """
         paths = []
 
-        for path_data in data.get("paths", []):
-            nodes = []
-            for node in path_data.get("nodes", []):
-                nodes.append(
-                    {
-                        "id": node.get("id", node.get("name", "")),
+        # Check if query timed out
+        if data.get("timed_out", False):
+            logger.warning("INDRA query timed out")
+            return paths
+
+        # Extract path_results (PathResultData schema)
+        path_results = data.get("path_results")
+        if not path_results:
+            logger.warning("No path_results in response")
+            return paths
+
+        # Extract paths dict: {source_name: [Path, Path, ...]}
+        paths_dict = path_results.get("paths", {})
+        if not paths_dict:
+            logger.warning("No paths found in path_results")
+            return paths
+
+        # Iterate through all source keys (usually just one)
+        for source_name, path_list in paths_dict.items():
+            for path_data in path_list:
+                # Parse nodes from path array (Node schema)
+                nodes = []
+                for node in path_data.get("path", []):
+                    nodes.append({
+                        "id": node.get("name", ""),  # Use name as ID
                         "name": node.get("name", ""),
-                        "grounding": self._parse_grounding(node.get("id", "")),
-                    }
-                )
+                        "grounding": {
+                            "db": node.get("namespace", ""),
+                            "id": node.get("identifier", "")
+                        }
+                    })
 
-            edges = []
-            for edge in path_data.get("edges", []):
-                statements = edge.get("statements", [])
-                evidence_count = len(statements)
-                belief = edge.get("belief", 0.5)
+                # Parse edges from edge_data array (EdgeData schema)
+                edges = []
+                for edge_data in path_data.get("edge_data", []):
+                    # Extract source and target from 2-element edge array
+                    edge_nodes = edge_data.get("edge", [])
+                    if len(edge_nodes) < 2:
+                        continue
 
-                # Extract PMIDs from statements
-                pmids = []
-                for stmt in statements[:5]:  # Limit to first 5
-                    evidence = stmt.get("evidence", [])
-                    for ev in evidence[:2]:  # Limit to 2 per statement
-                        pmid = ev.get("pmid")
-                        if pmid:
-                            pmids.append(f"PMID:{pmid}")
+                    source_node = edge_nodes[0]
+                    target_node = edge_nodes[1]
 
-                # Determine relationship type
-                stmt_type = statements[0].get("type", "Activation") if statements else "Activation"
-                relationship = self._map_statement_type(stmt_type)
+                    # Aggregate evidence across all statement types
+                    statements_dict = edge_data.get("statements", {})
+                    total_evidence = 0
+                    all_stmt_types = []
+                    all_hashes = []
 
-                edges.append(
-                    {
-                        "source": edge.get("source", ""),
-                        "target": edge.get("target", ""),
+                    for stmt_type, stmt_support in statements_dict.items():
+                        all_stmt_types.append(stmt_type)
+                        # Sum source counts for this statement type
+                        source_counts = stmt_support.get("source_counts", {})
+                        total_evidence += sum(source_counts.values())
+
+                        # Extract statement hashes
+                        for stmt in stmt_support.get("statements", [])[:3]:
+                            stmt_hash = stmt.get("stmt_hash")
+                            if stmt_hash:
+                                all_hashes.append(f"HASH:{stmt_hash}")
+
+                    # Use first statement type as primary
+                    primary_stmt_type = all_stmt_types[0] if all_stmt_types else "Activation"
+                    relationship = self._map_statement_type(primary_stmt_type)
+
+                    edges.append({
+                        "source": source_node.get("name", ""),
+                        "target": target_node.get("name", ""),
                         "relationship": relationship,
-                        "evidence_count": evidence_count,
-                        "belief": belief,
-                        "statement_type": stmt_type,
-                        "pmids": pmids,
-                    }
-                )
+                        "evidence_count": total_evidence,
+                        "belief": edge_data.get("belief", 0.5),
+                        "statement_type": primary_stmt_type,
+                        "pmids": all_hashes[:5],  # Limit to 5
+                        "db_url_edge": edge_data.get("db_url_edge", "")
+                    })
 
-            path_belief = path_data.get("path_belief", 0.5)
+                # Calculate path belief (can use edge weights)
+                avg_belief = sum(e["belief"] for e in edges) / len(edges) if edges else 0.5
 
-            paths.append(
-                {"nodes": nodes, "edges": edges, "path_belief": path_belief}
-            )
+                paths.append({
+                    "nodes": nodes,
+                    "edges": edges,
+                    "path_belief": avg_belief
+                })
 
+        logger.info(f"Parsed {len(paths)} paths from INDRA response")
         return paths
 
     def _parse_grounding(self, identifier: str) -> Dict[str, str]:
