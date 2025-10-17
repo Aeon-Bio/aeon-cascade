@@ -6,7 +6,7 @@ from typing import List
 from langchain_core.tools import BaseTool
 from langgraph_supervisor.handoff import create_handoff_tool
 
-from indra_agent.config.agent_registry import AGENT_REGISTRY, get_agent
+from indra_agent.config.agent_registry import AGENT_REGISTRY, get_agent_config
 
 logger = logging.getLogger(__name__)
 
@@ -78,7 +78,7 @@ def validate_handoff_dependencies() -> bool:
             continue
 
         for dep in agent_config.dependencies:
-            dep_config = get_agent(dep)
+            dep_config = get_agent_config(dep)
             if not dep_config:
                 logger.error(f"Agent {agent_name} depends on unknown agent: {dep}")
                 all_valid = False
