@@ -1,0 +1,64 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+*.egg-info/
+dist/
+build/
+*.egg
+
+# Virtual environments
+.venv/
+venv/
+env/
+ENV/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Testing
+.pytest_cache/
+.coverage
+htmlcov/
+.tox/
+
+# Git
+.git/
+.gitignore
+.gitmodules
+
+# Environment
+.env
+.env.local
+.env.*.local
+
+# Documentation
+*.md
+!README.md
+
+# Submodules (already containerized separately)
+aeon-gateway/
+
+# CI/CD
+.github/
+
+# UV lock file (already exported to requirements.txt)
+uv.lock
+
+# Misc
+*.log
+.DS_Store
+activate_claude_code.sh
+cleanup.sh
+
+# Frontend (static files, not needed in backend container)
+frontend/
+
+# Tests (not needed in production container)
+tests/

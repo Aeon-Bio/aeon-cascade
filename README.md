@@ -27,13 +27,45 @@ User → API Gateway → FastAPI Server (this system) → LangGraph Multi-Agent 
 
 ## Setup
 
-### Prerequisites
+### Option 1: Docker (Recommended for Production)
 
+**Prerequisites:**
+- Docker 20.10+ with BuildKit
+- Docker Compose v2.0+
+- AWS account with Bedrock access
+
+**Quick Start:**
+```bash
+# 1. Create .env file with AWS credentials
+cp .env.example .env
+# Edit .env and add your AWS_ACCESS_KEY_ID and AWS_SECRET_ACCESS_KEY
+
+# 2. Build and start all services
+docker-compose up --build
+
+# 3. Access services
+# - INDRA Agent: http://localhost:8000/docs
+# - Aeon Gateway: http://localhost:8001/docs
+
+# 4. Verify health
+curl http://localhost:8000/health
+curl http://localhost:8001/health
+```
+
+See **[DOCKER_DEPLOYMENT.md](./DOCKER_DEPLOYMENT.md)** for complete deployment guide, including:
+- Individual service deployment
+- Production configuration
+- Kubernetes deployment
+- Monitoring and troubleshooting
+
+### Option 2: Local Development
+
+**Prerequisites:**
 - Python 3.12+
 - AWS account with Bedrock access (for Claude Sonnet 4.5)
 - AWS credentials (access key ID and secret access key)
 
-### Installation
+**Installation:**
 
 1. Clone and navigate to hackathon directory:
 ```bash
