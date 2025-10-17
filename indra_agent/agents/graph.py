@@ -6,6 +6,7 @@ from typing import Literal
 from langgraph.graph import END, StateGraph
 
 from indra_agent.agents.indra_query_agent import create_indra_query_agent
+from indra_agent.agents.mesh_enrichment_agent import create_mesh_enrichment_agent
 from indra_agent.agents.state import OverallState
 from indra_agent.agents.supervisor import create_supervisor_agent
 from indra_agent.agents.web_researcher import create_web_researcher_agent
@@ -30,6 +31,12 @@ def create_causal_discovery_graph():
         agent = await create_supervisor_agent()
         return await agent(state, config)
 
+    async def mesh_enrichment_node(state: OverallState, config):
+        agent = await create_mesh_enrichment_agent()
+        result = await agent(state, config)
+        await agent.cleanup()
+        return result
+
     async def indra_query_node(state: OverallState, config):
         agent = await create_indra_query_agent()
         result = await agent(state, config)
@@ -44,13 +51,14 @@ def create_causal_discovery_graph():
 
     # Add nodes
     workflow.add_node("supervisor", supervisor_node)
+    workflow.add_node("mesh_enrichment", mesh_enrichment_node)
     workflow.add_node("indra_query_agent", indra_query_node)
     workflow.add_node("web_researcher", web_researcher_node)
 
     # Define routing logic
     def route_supervisor(
         state: OverallState,
-    ) -> Literal["indra_query_agent", "web_researcher", END]:
+    ) -> Literal["mesh_enrichment", "indra_query_agent", "web_researcher", END]:
         """Route from supervisor to next agent or END.
 
         Args:
@@ -71,13 +79,17 @@ def create_causal_discovery_graph():
         "supervisor",
         route_supervisor,
         {
+            "mesh_enrichment": "mesh_enrichment",
             "indra_query_agent": "indra_query_agent",
             "web_researcher": "web_researcher",
             END: END,
         },
     )
 
-    # Both specialist agents return to supervisor
+    # MeSH enrichment always goes to INDRA query agent
+    workflow.add_edge("mesh_enrichment", "indra_query_agent")
+
+    # INDRA and web researcher return to supervisor
     workflow.add_edge("indra_query_agent", "supervisor")
     workflow.add_edge("web_researcher", "supervisor")
 

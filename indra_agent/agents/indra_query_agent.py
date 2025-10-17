@@ -52,11 +52,22 @@ class INDRAQueryAgent:
         logger.info("INDRA query agent executing")
 
         try:
-            # Extract entities from query using LLM
-            entities = await self._extract_entities(state)
+            # Check if we have MeSH-enriched entities from previous agent
+            mesh_enriched = state.get("mesh_enriched_entities", [])
 
-            # Ground entities
-            grounded = self.grounding_service.ground_entities(entities)
+            if mesh_enriched:
+                logger.info(f"Using {len(mesh_enriched)} MeSH-enriched entities")
+                # Extract entity names from MeSH enrichment
+                entities = [e["original_term"] for e in mesh_enriched]
+                # Ground using MeSH enrichment + fallback to hard-coded
+                grounded = self.grounding_service.merge_with_mesh_enrichment(
+                    entities, mesh_enriched
+                )
+            else:
+                # Fall back to traditional entity extraction + grounding
+                logger.info("No MeSH enrichment available, using traditional grounding")
+                entities = await self._extract_entities(state)
+                grounded = self.grounding_service.ground_entities(entities)
 
             # Identify sources (exposures) and targets (biomarkers) using LLM
             query_text = state.get("query", {}).get("text", "")

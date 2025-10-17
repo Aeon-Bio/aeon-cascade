@@ -62,16 +62,18 @@ def process_chunk(args):
         if not relevant:
             continue
 
-        # Parse label
-        if "rdfs#label" in line and "@en" in line:
-            match = re.search(r'"([^"]+)"@en', line)
-            if match:
-                if mesh_id not in terms:
-                    terms[mesh_id] = {"mesh_id": mesh_id, "label": "", "definition": "", "uri": f"http://id.nlm.nih.gov/mesh/{mesh_id}"}
-                terms[mesh_id]["label"] = match.group(1)
+        # Parse label - must be exact MeSH ID, not a qualifier
+        if "rdf-schema#label" in line and "@en" in line and f"/{mesh_id}>" in line:
+            # Ensure it's the base term, not a qualifier like D052638Q000008
+            if f"/{mesh_id}Q" not in line:
+                match = re.search(r'"([^"]+)"@en', line)
+                if match:
+                    if mesh_id not in terms:
+                        terms[mesh_id] = {"mesh_id": mesh_id, "label": "", "definition": "", "uri": f"http://id.nlm.nih.gov/mesh/{mesh_id}"}
+                    terms[mesh_id]["label"] = match.group(1)
 
-        # Parse scope note
-        elif "scopeNote" in line:
+        # Parse scope note (definition)
+        elif "scopeNote" in line and f"/{mesh_id}>" in line:
             match = re.search(r'"([^"]+)"', line)
             if match:
                 if mesh_id not in terms:

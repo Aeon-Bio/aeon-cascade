@@ -23,8 +23,10 @@ Contains 6 clinically significant variants matching Sarah's genetic profile:
 
 ---
 
-### 2. `sarah_chen_biomarkers.json` (10 KB)
-**Blood Biomarker Results - 2 Timepoints**
+### 2a. `sarah_chen_baseline_labs.txt` (10 KB)
+**Quest Diagnostics Lab Report - Plain Text Format**
+
+Standard CLIA-certified lab report in plain text format (Quest Diagnostics style).
 
 #### Baseline (San Francisco - July 15, 2025)
 - **Metabolic**: HbA1c 5.9% (prediabetes), Glucose 105 mg/dL, HOMA-IR 3.7
@@ -32,20 +34,52 @@ Contains 6 clinically significant variants matching Sarah's genetic profile:
 - **Oxidative Stress**: 8-OHdG 4.2 ng/mL (normal)
 - **Status**: Prediabetic with insulin resistance, but inflammation controlled
 
+**Format**: Standard text report with:
+- Patient demographics and specimen info
+- Comprehensive metabolic panel
+- Diabetes monitoring (HbA1c, insulin, HOMA-IR)
+- Lipid panel
+- Inflammatory markers (CRP, IL-6, TNF-α)
+- Oxidative stress markers (8-OHdG)
+- Clinical interpretation and recommendations
+- CLIA/CAP certification
+
+**Usage**: Upload via Telegram bot or parse programmatically
+
+### 2b. `sarah_chen_3month_labs.txt` (12 KB)
+**LabCorp Lab Report - Plain Text Format**
+
+Standard CLIA-certified lab report in plain text format (LabCorp style).
+
 #### 3-Month Follow-up (Los Angeles - December 15, 2025)
 - **Metabolic**: HbA1c 6.3% (+0.4%), Glucose 119 mg/dL (+14), HOMA-IR 5.4 (+46%)
 - **Inflammatory**: CRP 2.1 mg/L (+200%), IL-6 3.1 pg/mL (+182%)
 - **Oxidative Stress**: 8-OHdG 8.6 ng/mL (+105%)
 - **Status**: Rapid progression toward diabetes threshold (6.5%)
 
-**Clinical Significance**: Demonstrates 94-98% prediction accuracy of Aeon model correlating PM2.5 exposure with metabolic deterioration
+**Format**: Standard text report with:
+- Complete panel with delta from baseline
+- Critical value alerts (HbA1c approaching diabetes threshold)
+- Environmental correlation analysis (PM2.5 exposure)
+- Risk assessment (3-month and 6-month diabetes risk)
+- Urgent intervention recommendations
+- Physician notes documenting rapid deterioration
+
+**Clinical Significance**: Demonstrates 94-98% prediction accuracy of healthOS model correlating PM2.5 exposure with metabolic deterioration
+
+### 2c. `sarah_chen_biomarkers.json` (10 KB) - DEPRECATED
+**JSON Format - For API Testing Only**
+
+This JSON file is retained for API testing but is NOT the format users upload. Users upload `.txt` lab reports which are parsed to extract biomarker values.
 
 **Data Structure**: Compatible with API models (`current_biomarkers` field)
 
 ---
 
-### 3. `sarah_chen_location_history.json` (3.1 KB)
+### 3. `sarah_chen_location_history.json` (3.1 KB) + Telegram Location Sharing
 **GPS/Address Timeline with Environmental Data**
+
+**Note**: This JSON file is for demo purposes. In production, users share location via Telegram's location sharing feature, which provides `latitude` and `longitude` that are reverse-geocoded to city names and enriched with PM2.5 data from air quality APIs.
 
 | Location | Period | Duration | Avg PM2.5 | Status |
 |----------|--------|----------|-----------|--------|
@@ -91,35 +125,78 @@ Contains 6 clinically significant variants matching Sarah's genetic profile:
 
 ## Demo Usage Scenarios
 
-### Scenario 1: Initial Risk Assessment
-**User uploads**:
-1. `sarah_chen_genetics.vcf` → Genetic risk profiling
-2. `sarah_chen_location_history.json` → Environmental exposure calculation
-3. Baseline biomarkers from `sarah_chen_biomarkers.json`
+### Scenario 1: Initial Risk Assessment (Via Telegram Bot)
+**User uploads to healthOS bot**:
+1. `/health_upload` → Sends `sarah_chen_genetics.vcf` → Genetic risk profiling
+2. Shares location (📍 San Francisco) → Bot fetches PM2.5 = 7.8 µg/m³
+3. `/health_upload` → Sends `sarah_chen_baseline_labs.txt` → Bot parses biomarkers
 
-**Aeon predicts**:
+**healthOS responds**:
+```
+🧬 Health Profile Complete!
+
+📊 Biomarkers: HbA1c 5.9% (prediabetes)
+🧬 Genetics: GSTM1 null, TCF7L2 C/T
+📍 Location: San Francisco (PM2.5: 7.8 µg/m³)
+```
+
+**User asks**: "How will moving to LA affect my diabetes risk?"
+
+**healthOS predicts** (via INDRA agent):
 - HbA1c will cross 6.5% (diabetes) within 6 months
 - Dual-pathway causal graph: PM2.5 → Inflammation + Metabolic dysfunction
 - GSTM1 null amplifies oxidative stress by 1.6×
+- Detailed causal pathway with evidence from 312 papers
 
-### Scenario 2: 3-Month Validation
-**User uploads**:
-- 3-month biomarker results from `sarah_chen_biomarkers.json`
+### Scenario 2: 3-Month Validation (Via Telegram Bot)
+**User (now in LA)**:
+1. Shares new location (📍 Los Angeles) → Bot updates: PM2.5 = 34.5 µg/m³
+2. `/health_upload` → Sends `sarah_chen_3month_labs.txt`
 
-**Aeon validates**:
+**Bot automatically detects deterioration**:
+```
+⚠️ Lab results processed (2025-12-15):
+
+• HbA1c: 6.3% (+0.4 from baseline) ⚠️
+• HOMA-IR: 5.4 (+46% insulin resistance) ⚠️
+• CRP: 2.1 mg/L (tripled - inflammation) ⚠️
+• 8-OHdG: 8.6 ng/mL (doubled - oxidative stress) ⚠️
+
+🚨 Your biomarkers have deteriorated as predicted!
+Running updated health analysis...
+```
+
+**healthOS validates**:
 - Prediction accuracy: 98% (predicted HbA1c 6.2%, actual 6.3%)
 - Model confidence increases to 94%
 - Updates 6-month forecast to HbA1c 6.6%
-- **Triggers intervention mode**
+- **Triggers intervention mode automatically**
 
-### Scenario 3: Intervention Simulation
+### Scenario 3: Intervention Simulation (Via Telegram Bot)
 **User asks**: "What can I do to avoid diabetes?"
 
-**Aeon simulates**:
-- NAC supplementation: -0.4% HbA1c (compensates GSTM1 null)
-- Metformin: -0.7% HbA1c (suppresses hepatic glucose)
-- HEPA filtration: -0.25% HbA1c (reduces indoor PM2.5 by 70%)
-- **Combined bundle**: HbA1c 6.6% → 5.8% (diabetes avoided)
+**healthOS simulates interventions** (via INDRA agent):
+```
+💊 Personalized Intervention Plan
+
+Based on your genetics and exposure:
+
+1. NAC 1200mg/day: -0.4% HbA1c
+   → Compensates GSTM1 null deficiency
+
+2. Metformin 1000mg/day: -0.7% HbA1c
+   → Suppresses hepatic glucose production
+
+3. HEPA Filtration: -0.25% HbA1c
+   → Reduces indoor PM2.5 by 70%
+
+📈 Combined Impact:
+Without: HbA1c → 6.6% (Diabetes)
+With: HbA1c → 5.8% (Diabetes AVOIDED)
+
+Cost: $105/month
+Savings: $144K lifetime T2DM costs
+```
 
 ### Scenario 4: 6-Month Outcome
 **Ground truth**: With interventions, actual HbA1c = 6.0%
@@ -276,9 +353,36 @@ ls -lh sarah_chen_*
 
 **Expected output**:
 - VCF: ~1.5 KB (6 variants)
-- Biomarkers: ~10 KB (2 timepoints, full panel)
+- Lab Reports (TXT): ~10-12 KB each (Quest/LabCorp format)
+- Biomarkers JSON: ~10 KB (deprecated - for API testing only)
 - Location: ~3 KB (2 locations with metadata)
 - Environmental: ~11 KB (258 days, sample readings)
+
+---
+
+## Telegram Bot Integration
+
+See [`TELEGRAM_INTEGRATION.md`](TELEGRAM_INTEGRATION.md) for complete details on:
+- How to upload files via healthOS Telegram bot
+- Location sharing via Telegram (`latitude`/`longitude` format)
+- Lab results parsing from `.txt` files
+- VCF genetics parsing
+- User commands (`/health_upload`, `/health_status`, `/health_analyze`)
+- MongoDB data storage structure
+- Example user journey with Sarah Chen
+
+---
+
+## File Usage Matrix
+
+| File | Format | Upload Method | Purpose |
+|------|--------|---------------|---------|
+| `sarah_chen_genetics.vcf` | VCF 4.3 | Telegram file upload | Genetic risk profiling |
+| `sarah_chen_baseline_labs.txt` | Plain text | Telegram file upload | Parse baseline biomarkers |
+| `sarah_chen_3month_labs.txt` | Plain text | Telegram file upload | Parse follow-up biomarkers |
+| `sarah_chen_location_history.json` | JSON | Telegram file upload OR manual DB insert | Demo: Environmental exposure history |
+| `sarah_chen_environmental_data.json` | JSON | Backend reference only | Air quality correlation analysis |
+| `sarah_chen_biomarkers.json` | JSON | API testing only (deprecated for user upload) | Direct API calls (skip parsing) |
 
 ---
 
@@ -286,5 +390,6 @@ ls -lh sarah_chen_*
 
 For questions about this dataset or demo scenario, see:
 - Demo scenario documentation: `aeon-gateway/docs/requirements/demo-scenario.md`
+- Telegram bot integration: `tests/fixtures/TELEGRAM_INTEGRATION.md`
 - API specification: `aeon-gateway/docs/api/agentic-system-spec.md`
 - System architecture: `CLAUDE.md`

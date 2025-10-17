@@ -2,9 +2,15 @@
 
 This service maps biomarker names, environmental exposures, and molecular entities
 to their corresponding database identifiers (MESH, HGNC, GO, CHEBI).
+
+Enhanced with MeSH ontology integration via Writer Knowledge Graph for
+dynamic entity resolution and synonym expansion.
 """
 
+import logging
 from typing import Dict, List, Optional, Tuple
+
+logger = logging.getLogger(__name__)
 
 
 class GroundingService:
@@ -245,3 +251,120 @@ class GroundingService:
             INDRA-compatible identifier (e.g., "HGNC:6018")
         """
         return f"{entity['database']}:{entity['identifier']}"
+
+    def ground_mesh_enriched_entities(
+        self, mesh_enriched: List[Dict]
+    ) -> Dict[str, Optional[Dict]]:
+        """Ground entities that were enriched with MeSH ontology.
+
+        Args:
+            mesh_enriched: List of MeSH-enriched entities from mesh_enrichment_agent
+
+        Returns:
+            Dict mapping original terms to grounded entity dicts
+        """
+        grounded_entities = {}
+
+        for enriched in mesh_enriched:
+            original_term = enriched.get("original_term")
+            mesh_id = enriched.get("mesh_id")
+            mesh_label = enriched.get("mesh_label")
+
+            if not mesh_id or not mesh_label:
+                logger.warning(f"Skipping incomplete MeSH entity: {enriched}")
+                continue
+
+            # Convert MeSH enriched entity to grounding format
+            grounded = {
+                "id": mesh_id,
+                "name": mesh_label,
+                "type": self._infer_type_from_mesh(enriched),
+                "database": "MESH",
+                "identifier": mesh_id,
+                "synonyms": enriched.get("synonyms", []),
+                "related_terms": enriched.get("related_terms", []),
+                "mesh_enriched": True,  # Flag to indicate MeSH enrichment
+            }
+
+            grounded_entities[original_term] = grounded
+
+            logger.info(
+                f"Grounded MeSH entity: {original_term} → {mesh_id} ({mesh_label})"
+            )
+
+            # Also add synonyms as alternate groundings
+            for synonym in enriched.get("synonyms", [])[:3]:
+                if synonym not in grounded_entities:
+                    grounded_entities[synonym] = grounded
+
+        return grounded_entities
+
+    def _infer_type_from_mesh(self, mesh_entity: Dict) -> str:
+        """Infer entity type from MeSH enrichment data.
+
+        Args:
+            mesh_entity: MeSH-enriched entity dict
+
+        Returns:
+            Entity type: "environmental", "biomarker", or "molecular"
+        """
+        mesh_id = mesh_entity.get("mesh_id", "")
+        label = mesh_entity.get("mesh_label", "").lower()
+        definition = mesh_entity.get("definition", "").lower()
+
+        # Environmental indicators
+        environmental_keywords = [
+            "pollutant", "particulate", "air quality", "exposure",
+            "pollution", "environmental", "ozone", "dioxide"
+        ]
+        if any(kw in label or kw in definition for kw in environmental_keywords):
+            return "environmental"
+
+        # Biomarker indicators
+        biomarker_keywords = [
+            "biomarker", "protein", "crp", "interleukin", "cytokine",
+            "marker", "indicator", "level"
+        ]
+        if any(kw in label or kw in definition for kw in biomarker_keywords):
+            return "biomarker"
+
+        # Default to molecular
+        return "molecular"
+
+    def merge_with_mesh_enrichment(
+        self, entities: List[str], mesh_enriched: List[Dict]
+    ) -> Dict[str, Optional[Dict]]:
+        """Merge traditional grounding with MeSH enrichment.
+
+        This provides a fallback chain:
+        1. Try MeSH-enriched grounding (most current and comprehensive)
+        2. Fall back to hard-coded mappings
+        3. Return None if not found
+
+        Args:
+            entities: List of entity names to ground
+            mesh_enriched: List of MeSH-enriched entities
+
+        Returns:
+            Dict mapping entity names to grounded dicts
+        """
+        # First, ground MeSH-enriched entities
+        mesh_grounded = self.ground_mesh_enriched_entities(mesh_enriched)
+
+        # Then ground remaining entities with hard-coded mappings
+        all_grounded = {}
+        for entity in entities:
+            if entity in mesh_grounded:
+                # Prefer MeSH enrichment
+                all_grounded[entity] = mesh_grounded[entity]
+                logger.info(f"Using MeSH enrichment for: {entity}")
+            else:
+                # Fall back to hard-coded
+                grounded = self.ground_entity(entity)
+                all_grounded[entity] = grounded
+                if grounded:
+                    logger.info(f"Using hard-coded mapping for: {entity}")
+                else:
+                    logger.warning(f"No grounding found for: {entity}")
+
+        return all_grounded

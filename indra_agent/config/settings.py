@@ -24,6 +24,7 @@ class Settings(BaseSettings):
     # Optional API Keys
     iqair_api_key: Optional[str] = None
     writer_api_key: Optional[str] = None
+    writer_graph_id: Optional[str] = None  # MeSH Knowledge Graph ID
 
     # Application Settings
     app_host: str = "0.0.0.0"
@@ -47,8 +48,13 @@ class Settings(BaseSettings):
 
     @property
     def is_writer_configured(self) -> bool:
-        """Check if Writer API key is configured."""
-        return self.writer_api_key is not None and len(self.writer_api_key) > 0
+        """Check if Writer API key and graph ID are configured."""
+        return (
+            self.writer_api_key is not None
+            and len(self.writer_api_key) > 0
+            and self.writer_graph_id is not None
+            and len(self.writer_graph_id) > 0
+        )
 
 
 # Global settings instance

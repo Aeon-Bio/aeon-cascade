@@ -58,6 +58,13 @@ class SupervisorAgent:
         if not current_agent:
             return await self._initial_routing(state)
 
+        # After MeSH enrichment agent
+        if current_agent == "mesh_enrichment":
+            # MeSH enrichment done, entities enriched
+            # Routing is handled by workflow edge (mesh_enrichment -> indra_query_agent)
+            logger.info("MeSH enrichment done, proceeding to INDRA query")
+            return {}  # Empty dict, routing handled by workflow edge
+
         # After INDRA agent
         if current_agent == "indra_query_agent":
             return await self._after_indra_agent(state)
@@ -70,7 +77,7 @@ class SupervisorAgent:
         return {"next_agent": "END"}
 
     async def _initial_routing(self, state: OverallState) -> Dict:
-        """Initial routing logic using LLM.
+        """Initial routing logic - always start with MeSH enrichment if configured.
 
         Args:
             state: Current state
@@ -78,6 +85,12 @@ class SupervisorAgent:
         Returns:
             Routing decision
         """
+        # Check if Writer KG is configured for MeSH enrichment
+        if self.settings.is_writer_configured:
+            logger.info("Writer KG configured - routing to mesh_enrichment first")
+            return {"next_agent": "mesh_enrichment"}
+
+        # Fall back to legacy routing without MeSH enrichment
         query_text = state.get("query", {}).get("text", "")
         user_context = state.get("user_context", {})
 
@@ -103,10 +116,10 @@ Respond with ONLY the agent name: 'web_researcher' or 'indra_query_agent'"""),
 
         # Validate response
         if "web_researcher" in next_agent and user_context.get("location_history"):
-            logger.info("LLM routing to web_researcher first")
+            logger.info("LLM routing to web_researcher first (no MeSH enrichment)")
             return {"next_agent": "web_researcher"}
         else:
-            logger.info("LLM routing to indra_query_agent first")
+            logger.info("LLM routing to indra_query_agent first (no MeSH enrichment)")
             return {"next_agent": "indra_query_agent"}
 
     async def _after_indra_agent(self, state: OverallState) -> Dict:

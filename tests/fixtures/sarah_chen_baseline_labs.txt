@@ -1,0 +1,214 @@
+================================================================================
+                         QUEST DIAGNOSTICS INCORPORATED
+                         Laboratory Test Report
+================================================================================
+
+Patient Information:
+  Name: CHEN, SARAH
+  DOB: 1993-03-15 (Age: 32)
+  Sex: Female
+  Patient ID: SARAH_CHEN_001
+
+Ordering Physician: Dr. Emily Martinez, MD
+Facility: Mission Health Center, San Francisco, CA
+
+Specimen Information:
+  Collection Date: 2025-07-15 08:15 AM
+  Received Date: 2025-07-15 10:30 AM
+  Report Date: 2025-07-15 16:45 PM
+  Specimen: Blood, Venous
+  Fasting Status: 10 hours fasting
+  Lab Order ID: LAB-2025-071501
+
+================================================================================
+                            TEST RESULTS
+================================================================================
+
+COMPREHENSIVE METABOLIC PANEL
+--------------------------------------------------------------------------------
+Test Name                    Result      Units    Reference Range        Flag
+--------------------------------------------------------------------------------
+Glucose, Fasting             105         mg/dL    65-99                  H
+Sodium                       140         mmol/L   136-145
+Potassium                    4.2         mmol/L   3.5-5.1
+Chloride                     102         mmol/L   98-107
+Carbon Dioxide               25          mmol/L   22-30
+BUN                          14          mg/dL    7-20
+Creatinine                   0.9         mg/dL    0.6-1.2
+eGFR                         >90         mL/min   >60
+Calcium                      9.5         mg/dL    8.6-10.2
+Albumin                      4.3         g/dL     3.5-5.0
+Total Protein                7.1         g/dL     6.0-8.3
+AST (SGOT)                   28          U/L      10-40
+ALT (SGPT)                   32          U/L      7-56
+Alkaline Phosphatase         68          U/L      30-120
+Total Bilirubin              0.6         mg/dL    0.2-1.2
+
+DIABETES MONITORING
+--------------------------------------------------------------------------------
+Test Name                    Result      Units    Reference Range        Flag
+--------------------------------------------------------------------------------
+Hemoglobin A1c               5.9         %        <5.7 (Normal)          H
+                                                  5.7-6.4 (Prediabetes)
+                                                  ≥6.5 (Diabetes)
+
+Interpretation: PREDIABETES
+  Patient shows elevated HbA1c consistent with prediabetes. Recommend
+  lifestyle modification and 3-month follow-up testing.
+
+Insulin, Fasting             14.2        µU/mL    2.6-24.9
+HOMA-IR (Calculated)         3.7         index    <2.0 (Sensitive)       H
+                                                  2.0-3.0 (Early IR)
+                                                  >3.0 (Resistant)
+
+Interpretation: INSULIN RESISTANCE
+  HOMA-IR = (Fasting Glucose × Fasting Insulin) / 405
+  HOMA-IR = (105 × 14.2) / 405 = 3.7
+  Result indicates significant insulin resistance.
+
+LIPID PANEL
+--------------------------------------------------------------------------------
+Test Name                    Result      Units    Reference Range        Flag
+--------------------------------------------------------------------------------
+Total Cholesterol            194         mg/dL    <200 (Desirable)
+Triglycerides                142         mg/dL    <150
+HDL Cholesterol              52          mg/dL    >50 (Female)
+LDL Cholesterol (Calc)       118         mg/dL    <100 (Optimal)         H
+                                                  100-129 (Near Optimal)
+VLDL Cholesterol (Calc)      28          mg/dL    <30
+Total/HDL Ratio              3.7                  <5.0 (Optimal)
+
+INFLAMMATORY MARKERS
+--------------------------------------------------------------------------------
+Test Name                    Result      Units    Reference Range        Flag
+--------------------------------------------------------------------------------
+C-Reactive Protein (hs)      0.7         mg/L     <1.0 (Low CV Risk)
+                                                  1.0-3.0 (Average Risk)
+                                                  >3.0 (High Risk)
+
+Interleukin-6 (IL-6)         1.1         pg/mL    <1.8
+
+TNF-alpha                    2.3         pg/mL    <2.8
+
+OXIDATIVE STRESS MARKER
+--------------------------------------------------------------------------------
+Test Name                    Result      Units    Reference Range        Flag
+--------------------------------------------------------------------------------
+8-OHdG (Urine)               4.2         ng/mL    <5.0 (Normal)
+                                                  5.0-8.0 (Elevated)
+                                                  >8.0 (High)
+
+METABOLIC MARKERS
+--------------------------------------------------------------------------------
+Test Name                    Result      Units    Reference Range        Flag
+--------------------------------------------------------------------------------
+Adiponectin                  8.2         µg/mL    >10 (Protective)       L
+
+Interpretation: LOW ADIPONECTIN
+  Low adiponectin levels associated with insulin resistance and
+  increased cardiovascular risk. Recommend weight management and
+  exercise intervention.
+
+THYROID FUNCTION
+--------------------------------------------------------------------------------
+Test Name                    Result      Units    Reference Range        Flag
+--------------------------------------------------------------------------------
+TSH                          2.1         µIU/mL   0.4-4.5
+
+================================================================================
+                        CLINICAL INTERPRETATION
+================================================================================
+
+FINDINGS:
+  1. PREDIABETES CONFIRMED
+     - HbA1c: 5.9% (diagnostic threshold: 5.7-6.4%)
+     - Fasting Glucose: 105 mg/dL (impaired fasting glucose: 100-125 mg/dL)
+     - Patient meets ADA criteria for prediabetes diagnosis
+
+  2. INSULIN RESISTANCE PRESENT
+     - HOMA-IR: 3.7 (normal <2.0)
+     - Fasting Insulin: 14.2 µU/mL (upper-normal range)
+     - Low adiponectin: 8.2 µg/mL (protective >10)
+     - Findings consistent with metabolic syndrome precursor state
+
+  3. LIPID PROFILE: BORDERLINE
+     - LDL cholesterol near optimal-borderline (118 mg/dL)
+     - Triglycerides upper-normal (142 mg/dL)
+     - HDL adequate for female (52 mg/dL)
+
+  4. INFLAMMATORY MARKERS: NORMAL
+     - CRP: 0.7 mg/L (low cardiovascular risk)
+     - IL-6, TNF-alpha within normal limits
+     - No evidence of chronic systemic inflammation at this time
+
+  5. OXIDATIVE STRESS: NORMAL
+     - 8-OHdG: 4.2 ng/mL (within normal range)
+     - No significant oxidative DNA damage detected
+
+RISK ASSESSMENT:
+  - 5-Year Type 2 Diabetes Risk: 40% (without intervention)
+  - 10-Year Cardiovascular Disease Risk: 2% (Framingham)
+  - Metabolic Syndrome: Not meeting full criteria (3/5 components)
+
+RECOMMENDATIONS:
+  1. Lifestyle Modification Program
+     - Structured weight loss (target: 5-10% body weight)
+     - Resistance training 3x/week
+     - Mediterranean-style diet
+     - Target: 150 min/week moderate-intensity aerobic activity
+
+  2. Follow-up Testing
+     - Repeat HbA1c, glucose, insulin in 3 months
+     - Annual comprehensive metabolic panel
+     - Consider continuous glucose monitoring
+
+  3. Genetic Counseling (if indicated)
+     - Patient has family history of Type 2 Diabetes
+     - May benefit from genetic risk assessment (TCF7L2, GSTM1 variants)
+
+  4. Environmental Factors
+     - Assess air quality exposure
+     - Consider antioxidant support if high pollution exposure
+
+PHYSICIAN NOTES:
+  Patient is health-conscious software engineer, currently living in
+  San Francisco (low air pollution). Despite normal inflammatory markers,
+  metabolic dysfunction is already present (prediabetes, insulin resistance).
+
+  Of particular concern: Patient is planning to relocate to Los Angeles
+  within 2 months. Recommend monitoring biomarkers closely post-relocation
+  due to significantly higher PM2.5 exposure in LA area.
+
+  Patient's genetic background (Asian ethnicity + family history) increases
+  diabetes risk. Early intervention critical to prevent progression.
+
+================================================================================
+
+Electronically signed by: Emily Martinez, MD
+Date/Time: 2025-07-15 16:45 PM PST
+
+Laboratory Director: Robert Chen, MD, PhD
+CLIA #: 05D0950582
+CAP #: 7172534
+
+Quest Diagnostics Incorporated
+1 Malcolm Ave, Teterboro, NJ 07608
+Phone: 1-866-MY-QUEST (1-866-697-8378)
+www.QuestDiagnostics.com
+
+================================================================================
+                              END OF REPORT
+================================================================================
+
+IMPORTANT NOTES:
+- This report is confidential and intended solely for the ordering physician
+  and the patient named above
+- Reference ranges may vary by laboratory and testing methodology
+- Clinical correlation with patient history and examination is recommended
+- For questions regarding results, contact the ordering physician
+
+Test results have been reviewed and released by the performing laboratory
+pursuant to applicable state and federal regulations.
+
+Report ID: QD-2025-071501-SF
+Page 1 of 1
