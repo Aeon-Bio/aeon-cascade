@@ -108,7 +108,7 @@ class INDRAService:
 
         try:
             url = f"{self.base_url}/api/node-name-in-graph"
-            params = {"name": name}
+            params = {"node-name": name}  # Fixed: OpenAPI schema requires "node-name" not "name"
 
             response = await self.client.get(url, params=params)
             response.raise_for_status()
@@ -143,8 +143,16 @@ class INDRAService:
             return self.entity_cache[cache_key]
 
         try:
+            # Parse CURIE format to db-name and db-id
+            if ":" not in node_id:
+                logger.warning(f"Node ID not in CURIE format: {node_id}")
+                return None
+
+            db_name, db_id = node_id.split(":", 1)
+
             url = f"{self.base_url}/api/node-id-in-graph"
-            params = {"id": node_id}
+            # Fixed: OpenAPI schema requires "db-name" and "db-id" not "id"
+            params = {"db-name": db_name.lower(), "db-id": db_id}
 
             response = await self.client.get(url, params=params)
             response.raise_for_status()
