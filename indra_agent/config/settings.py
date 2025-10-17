@@ -23,6 +23,7 @@ class Settings(BaseSettings):
 
     # Optional API Keys
     iqair_api_key: Optional[str] = None
+    writer_api_key: Optional[str] = None
 
     # Application Settings
     app_host: str = "0.0.0.0"
@@ -43,6 +44,11 @@ class Settings(BaseSettings):
     def is_iqair_configured(self) -> bool:
         """Check if IQAir API key is configured."""
         return self.iqair_api_key is not None and len(self.iqair_api_key) > 0
+
+    @property
+    def is_writer_configured(self) -> bool:
+        """Check if Writer API key is configured."""
+        return self.writer_api_key is not None and len(self.writer_api_key) > 0
 
 
 # Global settings instance
