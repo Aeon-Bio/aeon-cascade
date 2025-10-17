@@ -6,6 +6,8 @@ __pycache__/
 # C extensions
 *.so
 
+chainguard-python3.11-dev
+
 # Distribution / packaging
 .Python
 build/
