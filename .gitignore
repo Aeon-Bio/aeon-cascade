@@ -220,3 +220,11 @@ scripts/mesh/data/csv/*.csv
 *.log
 __pycache__/
 *.pyc
+
+# macOS
+.DS_Store
+
+# Archives
+*.zip
+*.tar.gz
+*.rar
