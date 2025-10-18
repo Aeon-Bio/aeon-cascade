@@ -57,6 +57,7 @@ async def test_e2e_with_mesh_enrichment_pm25_to_crp(client):
             focus_biomarkers=["CRP"]
         ),
         user_context=UserContext(
+            user_id="test-user-1",
             current_biomarkers={"CRP": 5.2},
             genetics={}
         ),
@@ -111,6 +112,7 @@ async def test_e2e_with_mesh_enrichment_il6_pathway(client):
             focus_biomarkers=["IL-6", "CRP"]
         ),
         user_context=UserContext(
+            user_id="test-user-2",
             current_biomarkers={"IL-6": 15.3, "CRP": 4.8},
             genetics={}
         ),
@@ -162,6 +164,7 @@ async def test_e2e_mesh_enrichment_improves_grounding(client):
             focus_biomarkers=["8-OHdG", "IL-6"]  # 8-OHdG is less common
         ),
         user_context=UserContext(
+            user_id="test-user-3",
             current_biomarkers={"8-OHdG": 25.0},
             genetics={}
         ),
@@ -200,6 +203,7 @@ async def test_e2e_mesh_enrichment_with_synonyms(client):
             focus_biomarkers=[]
         ),
         user_context=UserContext(
+            user_id="test-user",
             current_biomarkers={},
             genetics={}
         ),
@@ -250,6 +254,7 @@ async def test_e2e_mesh_enrichment_timing(client):
             focus_biomarkers=["CRP", "troponin"]
         ),
         user_context=UserContext(
+            user_id="test-user",
             current_biomarkers={},
             genetics={}
         ),
@@ -291,6 +296,7 @@ async def test_e2e_mesh_fallback_when_not_found(client):
             focus_biomarkers=["NOTAREALBIOMARKER123"]
         ),
         user_context=UserContext(
+            user_id="test-user",
             current_biomarkers={},
             genetics={}
         ),
@@ -325,9 +331,10 @@ async def test_e2e_mesh_enrichment_genetic_modifiers(client):
             focus_biomarkers=["8-OHdG"]
         ),
         user_context=UserContext(
+            user_id="test-user",
             current_biomarkers={"8-OHdG": 30.0},
             genetics={
-                "GSTM1_null": True,  # Glutathione S-transferase deletion
+                "GSTM1_null": "true",  # Glutathione S-transferase deletion
                 "NQO1_C609T": "TT"   # NAD(P)H quinone oxidoreductase variant
             }
         ),

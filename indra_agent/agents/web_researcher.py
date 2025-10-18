@@ -141,10 +141,12 @@ async def create_web_researcher_agent(handoff_tools=None):
     """
     settings = get_settings()
 
-    # Initialize LLM
+    # Initialize LLM with explicit credentials
     llm = ChatBedrock(
         model_id=settings.agent_model,
         region_name=settings.aws_region,
+        aws_access_key_id=settings.aws_access_key_id,
+        aws_secret_access_key=settings.aws_secret_access_key,
         model_kwargs={"temperature": WEB_RESEARCHER_CONFIG.temperature},
     )
 

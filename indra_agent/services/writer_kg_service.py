@@ -102,25 +102,49 @@ class WriterKGService:
             term_name: Term name to search for (e.g., "particulate matter", "CRP")
 
         Returns:
-            Dict with mesh_id, label, definition, synonyms, or None if not found
+            Dict with mesh_id, mesh_label, definition, synonyms, or None if not found
         """
         question = f"What is the MeSH ID and definition for the biomedical term '{term_name}'? Include synonyms if available."
 
-        result = await self.query_mesh_terms(question, max_snippets=5, grounding_level=0.9)
+        result = await self.query_mesh_terms(question, max_snippets=10, grounding_level=0.9)
 
         if not result.get("sources"):
             logger.warning(f"No MeSH term found for: {term_name}")
             return None
 
-        # Parse first source
-        source = result["sources"][0]
+        # Extract MeSH ID from LLM answer first (most reliable)
+        answer = result.get("answer", "")
+        mesh_id = self._extract_mesh_id_from_answer(answer)
+
+        # Find matching entry in sources
+        mesh_label = None
+        definition = None
+
+        if mesh_id:
+            # Search all sources for the specific MeSH ID
+            for source in result.get("sources", []):
+                snippet = source.get("snippet", "")
+                for line in snippet.split('\n'):
+                    if mesh_id in line:
+                        parts = line.split('\t')
+                        if len(parts) >= 2:
+                            mesh_label = parts[1].strip()
+                        if len(parts) >= 3:
+                            definition = parts[2].strip()
+                        break
+                if mesh_label:
+                    break
+
+        # Fallback to answer for definition
+        if not definition:
+            definition = answer
 
         return {
             "term": term_name,
-            "mesh_id": self._extract_mesh_id(source),
-            "label": self._extract_label(source),
-            "definition": source.get("snippet", ""),
-            "synonyms": self._extract_synonyms(result["answer"]),
+            "mesh_id": mesh_id,
+            "mesh_label": mesh_label,
+            "definition": definition,
+            "synonyms": self._extract_synonyms(answer),
         }
 
     async def expand_with_hierarchy(self, mesh_id: str) -> Dict:
@@ -172,8 +196,24 @@ class WriterKGService:
         logger.info(f"Found {len(related)} related terms for: {term_name}")
         return related
 
+    def _extract_mesh_id_from_answer(self, answer: str) -> Optional[str]:
+        """Extract MeSH ID from LLM answer text.
+
+        Args:
+            answer: LLM-generated answer text
+
+        Returns:
+            MeSH ID string (e.g., "D052638") or None
+        """
+        import re
+        # Look for patterns like "D052638", "MeSH ID D052638", "ID: D052638"
+        match = re.search(r'\b([DCA]\d{6})\b', answer)
+        if match:
+            return match.group(1)
+        return None
+
     def _extract_mesh_id(self, source: Dict) -> Optional[str]:
-        """Extract MeSH ID from source metadata.
+        """Extract MeSH ID from source metadata or TSV snippet.
 
         Args:
             source: Source dict from Writer KG
@@ -181,20 +221,31 @@ class WriterKGService:
         Returns:
             MeSH ID string (e.g., "D052638") or None
         """
-        # Try to extract from metadata or snippet
         snippet = source.get("snippet", "")
 
-        # Look for MeSH ID patterns: D######, C######, etc.
-        import re
-        match = re.search(r'\b([DCA]\d{6})\b', snippet)
-        if match:
-            return match.group(1)
+        # Parse TSV format: mesh_id\tlabel\tdefinition\turi
+        # Skip header lines
+        lines = [line.strip() for line in snippet.split('\n') if line.strip()]
 
-        # Try metadata field
+        for line in lines:
+            # Skip CSV/TSV header
+            if line.startswith("mesh_id"):
+                continue
+
+            # Parse tab-separated values
+            parts = line.split('\t')
+            if len(parts) >= 1:
+                mesh_id = parts[0].strip()
+                # Validate MeSH ID pattern: D######, C######, A######
+                import re
+                if re.match(r'^[DCA]\d{6}$', mesh_id):
+                    return mesh_id
+
+        # Fallback: try metadata field
         return source.get("metadata", {}).get("mesh_id")
 
     def _extract_label(self, source: Dict) -> Optional[str]:
-        """Extract term label from source.
+        """Extract term label from source or TSV snippet.
 
         Args:
             source: Source dict from Writer KG
@@ -206,17 +257,62 @@ class WriterKGService:
         if source.get("title"):
             return source["title"]
 
-        # Extract from snippet - look for pattern "Label (ID)" or just "Label"
         snippet = source.get("snippet", "")
 
-        import re
-        # Pattern: "Label (MeSH:ID)" or "Label (ID)"
-        match = re.match(r'^([^(]+)\s*\([A-Z]?\d+\)', snippet)
-        if match:
-            return match.group(1).strip()
+        # Parse TSV format: mesh_id\tlabel\tdefinition\turi
+        lines = [line.strip() for line in snippet.split('\n') if line.strip()]
 
-        # Fallback: first sentence
-        return snippet.split(".")[0]
+        for line in lines:
+            # Skip CSV/TSV header
+            if line.startswith("mesh_id"):
+                continue
+
+            # Parse tab-separated values
+            parts = line.split('\t')
+            if len(parts) >= 2:
+                mesh_id = parts[0].strip()
+                label = parts[1].strip()
+
+                # Validate this is a data row (not header or junk)
+                import re
+                if re.match(r'^[DCA]\d{6}$', mesh_id) and label:
+                    return label
+
+        # Fallback: return first line if no TSV structure found
+        return lines[0] if lines else None
+
+    def _extract_definition(self, source: Dict) -> Optional[str]:
+        """Extract definition from source or TSV snippet.
+
+        Args:
+            source: Source dict from Writer KG
+
+        Returns:
+            Definition string or None
+        """
+        snippet = source.get("snippet", "")
+
+        # Parse TSV format: mesh_id\tlabel\tdefinition\turi
+        lines = [line.strip() for line in snippet.split('\n') if line.strip()]
+
+        for line in lines:
+            # Skip CSV/TSV header
+            if line.startswith("mesh_id"):
+                continue
+
+            # Parse tab-separated values
+            parts = line.split('\t')
+            if len(parts) >= 3:
+                mesh_id = parts[0].strip()
+                definition = parts[2].strip()
+
+                # Validate this is a data row (not header or junk)
+                import re
+                if re.match(r'^[DCA]\d{6}$', mesh_id) and definition:
+                    return definition
+
+        # No definition found in TSV
+        return None
 
     def _extract_synonyms(self, answer_text: str) -> List[str]:
         """Extract synonyms from answer text.

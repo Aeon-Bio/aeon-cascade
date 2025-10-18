@@ -26,10 +26,12 @@ async def create_causal_discovery_graph():
 
     settings = get_settings()
 
-    # Initialize supervisor LLM
+    # Initialize supervisor LLM with explicit credentials
     supervisor_llm = ChatBedrock(
         model_id=settings.agent_model,
         region_name=settings.aws_region,
+        aws_access_key_id=settings.aws_access_key_id,
+        aws_secret_access_key=settings.aws_secret_access_key,
         model_kwargs={"temperature": SUPERVISOR_CONFIG.temperature},
     )
 
