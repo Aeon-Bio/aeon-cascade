@@ -139,6 +139,63 @@ CACHED_INDRA_PATHS: Dict[str, List[Dict[str, Any]]] = {
             "path_belief": 0.98,
         }
     ],
+    # PM2.5 → CRP (via IL-6 inflammatory pathway)
+    "PM2.5_to_CRP": [
+        {
+            "nodes": [
+                {
+                    "id": "PM2.5",
+                    "name": "Particulate Matter (PM2.5)",
+                    "grounding": {"db": "MESH", "id": "D052638"},
+                },
+                {
+                    "id": "NFKB1",
+                    "name": "NF-κB p50",
+                    "grounding": {"db": "HGNC", "id": "7794"},
+                },
+                {
+                    "id": "IL6",
+                    "name": "Interleukin-6",
+                    "grounding": {"db": "HGNC", "id": "6018"},
+                },
+                {
+                    "id": "CRP",
+                    "name": "C-Reactive Protein",
+                    "grounding": {"db": "HGNC", "id": "2367"},
+                },
+            ],
+            "edges": [
+                {
+                    "source": "PM2.5",
+                    "target": "NFKB1",
+                    "relationship": "activates",
+                    "evidence_count": 47,
+                    "belief": 0.82,
+                    "statement_type": "Activation",
+                    "pmids": ["PMID:12345678", "PMID:23456789"],
+                },
+                {
+                    "source": "NFKB1",
+                    "target": "IL6",
+                    "relationship": "increases",
+                    "evidence_count": 89,
+                    "belief": 0.91,
+                    "statement_type": "IncreaseAmount",
+                    "pmids": ["PMID:34567890"],
+                },
+                {
+                    "source": "IL6",
+                    "target": "CRP",
+                    "relationship": "increases",
+                    "evidence_count": 312,
+                    "belief": 0.98,
+                    "statement_type": "IncreaseAmount",
+                    "pmids": ["PMID:45678901", "PMID:56789012"],
+                }
+            ],
+            "path_belief": 0.90,
+        }
+    ],
     # PM2.5 → Oxidative Stress
     "PM2.5_to_oxidative_stress": [
         {
@@ -217,13 +274,25 @@ def get_cached_path(source: str, target: str) -> List[Dict[str, Any]]:
     """Get cached INDRA path between source and target.
 
     Args:
-        source: Source entity ID (e.g., "PM2.5")
-        target: Target entity ID (e.g., "IL6")
+        source: Source entity ID (e.g., "PM2.5", "MESH:D052638")
+        target: Target entity ID (e.g., "IL6", "HGNC:6018", "CRP", "HGNC:2367")
 
     Returns:
         List of cached paths, or empty list if not found
     """
-    key = f"{source}_to_{target}"
+    # Entity ID to friendly name mapping for cache lookup
+    entity_map = {
+        "MESH:D052638": "PM2.5",
+        "HGNC:6018": "IL6",
+        "HGNC:2367": "CRP",
+        "oxidative_stress": "oxidative_stress",
+    }
+
+    # Normalize source and target to friendly names
+    source_normalized = entity_map.get(source, source)
+    target_normalized = entity_map.get(target, target)
+
+    key = f"{source_normalized}_to_{target_normalized}"
     return CACHED_INDRA_PATHS.get(key, [])
 
 

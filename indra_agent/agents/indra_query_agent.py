@@ -115,7 +115,24 @@ def create_indra_tools():
             JSON string with causal graph structure
         """
         try:
-            paths = json.loads(paths_json).get("paths", [])
+            paths_data = json.loads(paths_json)
+
+            # Check if path finding failed
+            if paths_data.get("status") == "error":
+                return json.dumps({
+                    "status": "error",
+                    "error": f"Path finding failed: {paths_data.get('error', 'Unknown error')}"
+                })
+
+            paths = paths_data.get("paths", [])
+
+            # Check if we have any paths
+            if not paths:
+                return json.dumps({
+                    "status": "error",
+                    "error": "No causal paths found between entities"
+                })
+
             genetics = json.loads(genetics_json)
 
             # Build top 3 paths
