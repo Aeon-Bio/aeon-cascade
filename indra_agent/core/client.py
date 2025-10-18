@@ -3,6 +3,8 @@
 import logging
 from typing import Union
 
+from langchain_core.messages import HumanMessage
+
 from indra_agent.agents.graph import create_causal_discovery_graph
 from indra_agent.core.models import (
     CausalDiscoveryRequest,
@@ -48,9 +50,11 @@ class INDRAAgentClient:
             # Ensure graph is initialized
             await self._ensure_graph()
 
-            # Prepare initial state
+            # Prepare initial state with HumanMessage
+            user_message = HumanMessage(content=request.query.text)
+
             initial_state = {
-                "messages": [],
+                "messages": [user_message],
                 "request_id": request.request_id,
                 "user_context": request.user_context.model_dump(),
                 "query": request.query.model_dump(),
