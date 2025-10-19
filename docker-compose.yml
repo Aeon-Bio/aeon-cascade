@@ -1,5 +1,3 @@
-version: '3.8'
-
 services:
   # =============================================================================
   # INDRA Agent: LangGraph-based multi-agent system for bio-ontology queries
@@ -35,7 +33,7 @@ services:
       - AGENT_MODEL=${AGENT_MODEL:-us.anthropic.claude-sonnet-4-5-20250929-v1:0}
       - AGENT_TEMPERATURE=${AGENT_TEMPERATURE:-0}
 
-    volumes:
+    # volumes:
       # Optional: Mount .env file for local development
       # Uncomment if you want to use .env file instead of environment variables
       # - ./.env:/opt/app/.env:ro
@@ -84,7 +82,7 @@ services:
       - AGENTIC_SYSTEM_URL=http://indra-agent:8000
       - LOG_LEVEL=${LOG_LEVEL:-INFO}
 
-    volumes:
+    # volumes:
       # Optional: Mount .env file for local development
       # - ./aeon-gateway/.env:/opt/app/.env:ro
 
