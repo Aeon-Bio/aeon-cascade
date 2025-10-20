@@ -213,6 +213,7 @@ def format_indra_response(response) -> str:
     graph = response.causal_graph
     metadata = response.metadata
     explanations = response.explanations
+    predictions = response.predictions
 
     # Build formatted message
     lines = ["🧬 <b>Health Intelligence Report</b>\n"]
@@ -222,6 +223,39 @@ def format_indra_response(response) -> str:
     for i, explanation in enumerate(explanations, 1):
         lines.append(f"{i}. {explanation}")
     lines.append("")
+
+    # Temporal predictions (if available)
+    if predictions:
+        lines.append("📈 <b>Temporal Predictions:</b>")
+        for biomarker_id, timeline_dict in predictions.items():
+            # Extract biomarker label from graph
+            biomarker_label = next((n.label for n in graph.nodes if n.id == biomarker_id), biomarker_id)
+
+            baseline = timeline_dict.get('baseline', 0)
+            unit = timeline_dict.get('unit', 'units')
+            timeline = timeline_dict.get('timeline', [])
+
+            lines.append(f"  <b>{biomarker_label}</b> (baseline: {baseline:.2f} {unit})")
+
+            # Show prediction trajectory
+            for point in timeline:
+                day = point.get('day', 0)
+                mean = point.get('mean', 0)
+                ci = point.get('confidence_interval', [0, 0])
+                risk_level = point.get('risk_level', 'unknown')
+
+                # Risk level emoji
+                risk_emoji = {
+                    'low': '🟢',
+                    'moderate': '🟡',
+                    'high': '🔴',
+                    'unknown': '⚪'
+                }.get(risk_level, '⚪')
+
+                lines.append(
+                    f"    Day {day}: {mean:.2f} {unit} [{ci[0]:.2f}-{ci[1]:.2f}] {risk_emoji} {risk_level}"
+                )
+            lines.append("")
 
     # Causal graph summary
     lines.append(f"🔬 <b>Causal Analysis:</b>")
