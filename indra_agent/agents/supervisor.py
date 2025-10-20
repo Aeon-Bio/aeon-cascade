@@ -244,11 +244,107 @@ Each explanation must be <200 characters."""),
             total_evidence_papers=total_evidence,
         )
 
+        # Generate temporal predictions if user context available
+        predictions = {}
+        user_context = state.get("user_context", {})
+        if user_context and causal_graph.nodes:
+            try:
+                predictions = await self._generate_predictions(
+                    causal_graph=causal_graph,
+                    user_context=user_context,
+                    environmental_data=environmental_data,
+                )
+                logger.info(f"Generated predictions for {len(predictions)} biomarkers")
+            except Exception as e:
+                logger.warning(f"Failed to generate predictions: {e}")
+                predictions = {}
+
         return {
             "explanations": explanations,
             "metadata": metadata.model_dump(),
+            "predictions": predictions,
             "next_agent": "END",
         }
+
+    async def _generate_predictions(
+        self,
+        causal_graph: CausalGraph,
+        user_context: Dict,
+        environmental_data: Dict,
+    ) -> Dict:
+        """Generate temporal predictions for biomarkers.
+
+        Args:
+            causal_graph: Causal graph with nodes and edges
+            user_context: User genetics, biomarkers, location history
+            environmental_data: Environmental exposure data
+
+        Returns:
+            Dictionary mapping biomarker name → PredictionTimeline dict
+        """
+        from indra_agent.services.temporal_model import TemporalModelEngine
+
+        # Initialize temporal model engine
+        engine = TemporalModelEngine(n_simulations=1000)
+
+        # Build temporal model
+        model = engine.build_model(
+            causal_graph=causal_graph,
+            user_genetics=user_context.get("genetics", {}),
+            baseline_biomarkers=user_context.get("current_biomarkers", {}),
+        )
+
+        # Infer environmental changes from location history
+        env_changes = self._infer_environmental_changes(
+            location_history=user_context.get("location_history", []),
+            environmental_data=environmental_data,
+        )
+
+        # Generate predictions (90-day horizon)
+        predictions = engine.predict(
+            model=model,
+            environmental_changes=env_changes,
+            horizon_days=90,
+        )
+
+        # Convert PredictionTimeline objects to dicts for serialization
+        predictions_dict = {
+            biomarker: timeline.model_dump()
+            for biomarker, timeline in predictions.items()
+        }
+
+        return predictions_dict
+
+    def _infer_environmental_changes(
+        self,
+        location_history: list,
+        environmental_data: Dict,
+    ) -> Dict[str, float]:
+        """Infer environmental changes from location history.
+
+        Args:
+            location_history: List of location history entries
+            environmental_data: Environmental data from web researcher
+
+        Returns:
+            Dictionary mapping environmental factor → multiplier (e.g., {"PM2.5": 1.8})
+        """
+        if not location_history:
+            return {}
+
+        # Check if environmental data has exposure deltas
+        if environmental_data.get("exposure_deltas"):
+            return environmental_data["exposure_deltas"]
+
+        # Fallback: Simple heuristic based on location
+        last_location = location_history[-1]
+        city = last_location.get("city", "").lower() if isinstance(last_location, dict) else ""
+
+        # LA has ~1.8x higher PM2.5 than SF (demo heuristic)
+        if "los angeles" in city or city == "la":
+            return {"PM2.5": 1.8}
+
+        return {}
 
 
 # Factory function for agent

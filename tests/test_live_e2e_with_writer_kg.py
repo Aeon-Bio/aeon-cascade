@@ -64,7 +64,8 @@ async def test_e2e_with_mesh_enrichment_pm25_to_crp(client):
         options=RequestOptions(max_graph_depth=4)
     )
 
-    response = await client.process_request(request)
+    # Use longer timeout for integration tests with AWS Bedrock + Writer KG
+    response = await client.process_request(request, timeout=60.0)
 
     # Verify successful response
     assert response.request_id == request.request_id
@@ -119,7 +120,7 @@ async def test_e2e_with_mesh_enrichment_il6_pathway(client):
         options=RequestOptions(max_graph_depth=5)
     )
 
-    response = await client.process_request(request)
+    response = await client.process_request(request, timeout=60.0)
 
     # Verify response
     assert hasattr(response, "causal_graph")
@@ -171,7 +172,7 @@ async def test_e2e_mesh_enrichment_improves_grounding(client):
         options=RequestOptions(max_graph_depth=4)
     )
 
-    response = await client.process_request(request)
+    response = await client.process_request(request, timeout=60.0)
 
     # Should successfully process even with complex medical terminology
     assert hasattr(response, "causal_graph")
@@ -210,7 +211,7 @@ async def test_e2e_mesh_enrichment_with_synonyms(client):
         options=RequestOptions(max_graph_depth=3)
     )
 
-    response = await client.process_request(request)
+    response = await client.process_request(request, timeout=60.0)
 
     assert hasattr(response, "causal_graph")
 
@@ -261,7 +262,7 @@ async def test_e2e_mesh_enrichment_timing(client):
         options=RequestOptions(max_graph_depth=3)
     )
 
-    response = await client.process_request(request)
+    response = await client.process_request(request, timeout=60.0)
 
     elapsed_ms = (time.time() - start) * 1000
 
@@ -303,7 +304,7 @@ async def test_e2e_mesh_fallback_when_not_found(client):
         options=RequestOptions(max_graph_depth=2)
     )
 
-    response = await client.process_request(request)
+    response = await client.process_request(request, timeout=60.0)
 
     # May get error or empty graph, but shouldn't crash
     if hasattr(response, "error"):
@@ -341,7 +342,7 @@ async def test_e2e_mesh_enrichment_genetic_modifiers(client):
         options=RequestOptions(max_graph_depth=4)
     )
 
-    response = await client.process_request(request)
+    response = await client.process_request(request, timeout=60.0)
 
     assert hasattr(response, "causal_graph")
 

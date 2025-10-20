@@ -35,12 +35,13 @@ class INDRAAgentClient:
             logger.info("Graph initialized successfully")
 
     async def process_request(
-        self, request: CausalDiscoveryRequest
+        self, request: CausalDiscoveryRequest, timeout: float = 30.0
     ) -> Union[CausalDiscoveryResponse, ErrorResponse]:
         """Process causal discovery request.
 
         Args:
             request: Causal discovery request
+            timeout: Timeout in seconds (default: 30.0)
 
         Returns:
             CausalDiscoveryResponse or ErrorResponse
@@ -72,19 +73,19 @@ class INDRAAgentClient:
                 "current_agent": "",
             }
 
-            # Run graph with 30-second timeout to prevent indefinite hangs
+            # Run graph with timeout and 20-iteration limit to prevent indefinite hangs
             try:
                 final_state = await asyncio.wait_for(
-                    self.graph.ainvoke(initial_state),
-                    timeout=30.0
+                    self.graph.ainvoke(initial_state, {"recursion_limit": 20}),
+                    timeout=timeout
                 )
             except asyncio.TimeoutError:
-                logger.error(f"Request {request.request_id} timed out after 30 seconds")
+                logger.error(f"Request {request.request_id} timed out after {timeout} seconds")
                 return ErrorResponse(
                     request_id=request.request_id,
                     error=ErrorInfo(
                         code="TIMEOUT",
-                        message="Query timed out after 30 seconds",
+                        message=f"Query timed out after {timeout} seconds",
                         details=None,
                     ),
                 )
