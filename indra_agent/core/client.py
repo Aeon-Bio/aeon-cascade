@@ -93,6 +93,7 @@ class INDRAAgentClient:
             causal_graph_dict = final_state.get("causal_graph", {})
             explanations = final_state.get("explanations", [])
             metadata_dict = final_state.get("metadata", {})
+            predictions_dict = final_state.get("predictions", {})
 
             # Validate we have results
             if not causal_graph_dict or not causal_graph_dict.get("nodes"):
@@ -125,11 +126,13 @@ class INDRAAgentClient:
                 causal_graph=causal_graph,
                 metadata=metadata,
                 explanations=explanations,
+                predictions=predictions_dict if predictions_dict else None,
             )
 
             logger.info(
                 f"Request {request.request_id} completed successfully: "
-                f"{len(causal_graph.nodes)} nodes, {len(causal_graph.edges)} edges"
+                f"{len(causal_graph.nodes)} nodes, {len(causal_graph.edges)} edges, "
+                f"{len(predictions_dict)} predictions" if predictions_dict else f"{len(causal_graph.nodes)} nodes, {len(causal_graph.edges)} edges"
             )
 
             return response
