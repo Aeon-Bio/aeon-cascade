@@ -18,6 +18,7 @@ services:
       # Optional API keys
       - IQAIR_API_KEY=${IQAIR_API_KEY:-}
       - WRITER_API_KEY=${WRITER_API_KEY:-}
+      - WRITER_GRAPH_ID=${WRITER_GRAPH_ID:-}
 
       # Application settings
       - APP_HOST=0.0.0.0

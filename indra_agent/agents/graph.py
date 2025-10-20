@@ -65,8 +65,14 @@ async def create_causal_discovery_graph():
         supervisor_name="supervisor",
     )
 
-    # Compile workflow
-    graph = workflow.compile()
+    # Compile workflow with recursion limit to prevent unbounded execution
+    MAX_ITERATIONS = 20
+    graph = workflow.compile(
+        checkpointer=None,  # No persistence for now
+        interrupt_before=[],
+        interrupt_after=[],
+        recursion_limit=MAX_ITERATIONS
+    )
 
-    logger.info("Causal discovery graph compiled successfully")
+    logger.info(f"Causal discovery graph compiled successfully (max iterations: {MAX_ITERATIONS})")
     return graph

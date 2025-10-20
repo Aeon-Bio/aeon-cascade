@@ -131,6 +131,37 @@ class Metadata(BaseModel):
     total_evidence_papers: int
 
 
+class PredictionTimeline(BaseModel):
+    """Temporal prediction for a single biomarker."""
+
+    baseline: float = Field(description="Baseline biomarker value")
+    timeline: List[Dict[str, Any]] = Field(
+        description="List of prediction points: [{day, mean, confidence_interval, risk_level}]"
+    )
+    unit: str = Field(description="Measurement unit (e.g., 'mg/L', 'pg/mL')")
+
+    @field_validator("timeline")
+    @classmethod
+    def validate_timeline_structure(cls, v: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+        """Validate timeline structure."""
+        required_fields = {"day", "mean", "confidence_interval", "risk_level"}
+        for entry in v:
+            missing = required_fields - set(entry.keys())
+            if missing:
+                raise ValueError(f"Timeline entry missing fields: {missing}")
+
+            # Validate confidence_interval is a 2-element list
+            ci = entry.get("confidence_interval")
+            if not isinstance(ci, list) or len(ci) != 2:
+                raise ValueError("confidence_interval must be [lower, upper]")
+
+            # Validate risk_level
+            if entry.get("risk_level") not in ["low", "moderate", "high", "unknown"]:
+                raise ValueError(f"Invalid risk_level: {entry.get('risk_level')}")
+
+        return v
+
+
 class CausalDiscoveryResponse(BaseModel):
     """Success response for /api/v1/causal_discovery endpoint."""
 
@@ -140,6 +171,10 @@ class CausalDiscoveryResponse(BaseModel):
     metadata: Metadata
     explanations: List[str] = Field(
         min_length=1, max_length=5, description="3-5 human-readable explanations"
+    )
+    predictions: Optional[Dict[str, PredictionTimeline]] = Field(
+        default=None,
+        description="Temporal predictions for biomarkers (optional, requires user context)"
     )
 
 

@@ -1,5 +1,6 @@
 """Client wrapper for INDRA causal discovery workflow."""
 
+import asyncio
 import logging
 from typing import Union
 
@@ -71,8 +72,22 @@ class INDRAAgentClient:
                 "current_agent": "",
             }
 
-            # Run graph
-            final_state = await self.graph.ainvoke(initial_state)
+            # Run graph with 30-second timeout to prevent indefinite hangs
+            try:
+                final_state = await asyncio.wait_for(
+                    self.graph.ainvoke(initial_state),
+                    timeout=30.0
+                )
+            except asyncio.TimeoutError:
+                logger.error(f"Request {request.request_id} timed out after 30 seconds")
+                return ErrorResponse(
+                    request_id=request.request_id,
+                    error=ErrorInfo(
+                        code="TIMEOUT",
+                        message="Query timed out after 30 seconds",
+                        details=None,
+                    ),
+                )
 
             # Extract results
             causal_graph_dict = final_state.get("causal_graph", {})

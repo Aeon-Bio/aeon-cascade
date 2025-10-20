@@ -20,13 +20,27 @@ services:
     depends_on:
       - mongo
     environment:
-      # AWS Bedrock credentials for INDRA agent
+      # AWS Bedrock credentials (REQUIRED)
       - AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID}
       - AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY}
       - AWS_REGION=${AWS_REGION:-us-east-1}
-      # Optional: INDRA configuration
-      - INDRA_BASE_URL=${INDRA_BASE_URL:-https://db.indra.bio}
-      - IQAIR_API_KEY=${IQAIR_API_KEY}
+
+      # Optional API keys
+      - IQAIR_API_KEY=${IQAIR_API_KEY:-}
+      - WRITER_API_KEY=${WRITER_API_KEY:-}
+      - WRITER_GRAPH_ID=${WRITER_GRAPH_ID:-}
+
+      # INDRA settings (align with root docker-compose.yml)
+      - INDRA_BASE_URL=${INDRA_BASE_URL:-https://network.indra.bio}
+      - INDRA_TIMEOUT=${INDRA_TIMEOUT:-30}
+      - INDRA_CACHE_TTL=${INDRA_CACHE_TTL:-3600}
+
+      # Agent settings
+      - AGENT_MODEL=${AGENT_MODEL:-us.anthropic.claude-sonnet-4-5-20250929-v1:0}
+      - AGENT_TEMPERATURE=${AGENT_TEMPERATURE:-0}
+
+      # Application settings
+      - LOG_LEVEL=${LOG_LEVEL:-INFO}
 
   mongo_express:
     container_name: mongo-express
