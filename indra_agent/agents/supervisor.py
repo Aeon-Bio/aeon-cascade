@@ -13,6 +13,7 @@ from indra_agent.config.agent_config import SUPERVISOR_CONFIG
 from indra_agent.config.settings import get_settings
 from indra_agent.core.models import CausalGraph, Metadata
 from indra_agent.services.graph_builder import GraphBuilderService
+from indra_agent.services.insight_generator import InsightGenerator
 
 logger = logging.getLogger(__name__)
 
@@ -25,6 +26,7 @@ class SupervisorAgent:
         self.settings = get_settings()
         self.config = SUPERVISOR_CONFIG
         self.graph_builder = GraphBuilderService()
+        self.insight_generator = InsightGenerator()
 
         # Initialize LLM (AWS Bedrock)
         self.llm = ChatBedrock(
@@ -73,6 +75,10 @@ class SupervisorAgent:
         if current_agent == "web_researcher":
             return await self._after_web_researcher(state)
 
+        # After intervention planner
+        if current_agent == "intervention_planner":
+            return await self._after_intervention_planner(state)
+
         # Default: end
         return {"next_agent": "END"}
 
@@ -85,6 +91,22 @@ class SupervisorAgent:
         Returns:
             Routing decision
         """
+        # Emit progress: Step 1 - Routing (3%)
+        emitter = state.get("progress_emitter")
+        if emitter:
+            async with emitter.step(
+                agent="supervisor",
+                action="Routing query to specialized agents",
+                progress_percent=3,
+            ):
+                pass  # Routing logic happens below
+
+        # Check if this is an intervention query (explicit intent)
+        query_intent = state.get("query", {}).get("intent")
+        if query_intent == "intervention":
+            logger.info("Query intent=intervention - routing to intervention_planner")
+            return {"next_agent": "intervention_planner"}
+
         # Check if Writer KG is configured for MeSH enrichment
         if self.settings.is_writer_configured:
             logger.info("Writer KG configured - routing to mesh_enrichment first")
@@ -125,23 +147,64 @@ Respond with ONLY the agent name: 'web_researcher' or 'indra_query_agent'"""),
     async def _after_indra_agent(self, state: OverallState) -> Dict:
         """Handle state after INDRA agent execution.
 
+        This method extracts tool results from ReAct agent messages and updates state.
+        The INDRA ReAct agent puts results in ToolMessages, but we need them in state fields.
+
         Args:
             state: Current state
 
         Returns:
-            Routing decision
+            Routing decision and extracted state updates
         """
+        # Extract tool results from messages and update state
+        from langchain_core.messages import ToolMessage
+        import json
+
+        messages = state.get("messages", [])
+        causal_graph = state.get("causal_graph")
+        indra_paths = state.get("indra_paths", [])
+
+        # If state already has causal_graph, we're done extracting
+        if not causal_graph:
+            # Search messages for tool results
+            for msg in reversed(messages):
+                if isinstance(msg, ToolMessage):
+                    try:
+                        result = json.loads(msg.content)
+
+                        # Extract causal graph from build_causal_graph tool
+                        if result.get("status") == "success" and "causal_graph" in result and not causal_graph:
+                            causal_graph = result["causal_graph"]
+                            logger.info(f"Extracted causal_graph with {len(causal_graph.get('nodes', []))} nodes from tool results")
+
+                        # Extract paths from find_causal_paths tool
+                        if result.get("status") == "success" and "paths" in result and not indra_paths:
+                            indra_paths = result["paths"]
+                            logger.info(f"Extracted {len(indra_paths)} INDRA paths from tool results")
+
+                    except (json.JSONDecodeError, AttributeError, KeyError) as e:
+                        continue
+
+        # Prepare state updates
+        state_updates = {}
+        if causal_graph and not state.get("causal_graph"):
+            state_updates["causal_graph"] = causal_graph
+        if indra_paths and not state.get("indra_paths"):
+            state_updates["indra_paths"] = indra_paths
+
         # Check if we have environmental data
         if not state.get("environmental_data") and state.get("user_context", {}).get(
             "location_history"
         ):
             # Need environmental data
             logger.info("INDRA agent done, routing to web_researcher")
-            return {"next_agent": "web_researcher"}
+            state_updates["next_agent"] = "web_researcher"
+            return state_updates
 
         # We have everything, finalize
         logger.info("INDRA agent done, finalizing")
-        return await self._finalize_response(state)
+        finalization = await self._finalize_response({**state, **state_updates})
+        return {**state_updates, **finalization}
 
     async def _after_web_researcher(self, state: OverallState) -> Dict:
         """Handle state after web researcher execution.
@@ -162,6 +225,27 @@ Respond with ONLY the agent name: 'web_researcher' or 'indra_query_agent'"""),
         logger.info("Web researcher done, finalizing")
         return await self._finalize_response(state)
 
+    async def _after_intervention_planner(self, state: OverallState) -> Dict:
+        """Handle state after intervention planner execution.
+
+        The intervention planner analyzes the causal graph and proposes interventions.
+        After it completes, we finalize the response with intervention recommendations.
+
+        Args:
+            state: Current state
+
+        Returns:
+            Routing decision
+        """
+        logger.info("Intervention planner done, finalizing intervention recommendations")
+
+        # The intervention planner should have populated state with:
+        # - intervention_analysis: graph structure analysis
+        # - intervention_recommendations: proposed interventions
+        # We finalize and return these to the user
+
+        return {"next_agent": "END"}
+
     async def _finalize_response(self, state: OverallState) -> Dict:
         """Finalize the response with explanations using LLM.
 
@@ -172,6 +256,16 @@ Respond with ONLY the agent name: 'web_researcher' or 'indra_query_agent'"""),
             Final state update
         """
         logger.info("Finalizing response with LLM-generated explanations")
+
+        # Emit progress: Step 15 - Generating explanations (100%)
+        emitter = state.get("progress_emitter")
+        if emitter:
+            async with emitter.step(
+                agent="supervisor",
+                action="Generating explanations and insights",
+                progress_percent=100,
+            ):
+                pass  # Explanation generation happens below
 
         # Get causal graph with defensive handling
         causal_graph_dict = state.get("causal_graph", {})
@@ -244,107 +338,32 @@ Each explanation must be <200 characters."""),
             total_evidence_papers=total_evidence,
         )
 
-        # Generate temporal predictions if user context available
-        predictions = {}
+        # Generate qualitative insights (Path A: Evidence-based hypotheses)
+        insights = {}
         user_context = state.get("user_context", {})
-        if user_context and causal_graph.nodes:
+        request_id = state.get("request_id", "")
+
+        if causal_graph.nodes:
             try:
-                predictions = await self._generate_predictions(
+                hypothesis_exploration = self.insight_generator.generate_exploration(
+                    request_id=request_id,
                     causal_graph=causal_graph,
-                    user_context=user_context,
+                    indra_paths=indra_paths,
+                    user_genetics=user_context.get("genetics", {}),
                     environmental_data=environmental_data,
                 )
-                logger.info(f"Generated predictions for {len(predictions)} biomarkers")
+                insights = hypothesis_exploration.model_dump()
+                logger.info(f"Generated {len(hypothesis_exploration.insights)} qualitative insights")
             except Exception as e:
-                logger.warning(f"Failed to generate predictions: {e}")
-                predictions = {}
+                logger.warning(f"Failed to generate insights: {e}")
+                insights = {}
 
         return {
             "explanations": explanations,
             "metadata": metadata.model_dump(),
-            "predictions": predictions,
+            "insights": insights,  # Qualitative insights instead of predictions
             "next_agent": "END",
         }
-
-    async def _generate_predictions(
-        self,
-        causal_graph: CausalGraph,
-        user_context: Dict,
-        environmental_data: Dict,
-    ) -> Dict:
-        """Generate temporal predictions for biomarkers.
-
-        Args:
-            causal_graph: Causal graph with nodes and edges
-            user_context: User genetics, biomarkers, location history
-            environmental_data: Environmental exposure data
-
-        Returns:
-            Dictionary mapping biomarker name → PredictionTimeline dict
-        """
-        from indra_agent.services.temporal_model import TemporalModelEngine
-
-        # Initialize temporal model engine
-        engine = TemporalModelEngine(n_simulations=1000)
-
-        # Build temporal model
-        model = engine.build_model(
-            causal_graph=causal_graph,
-            user_genetics=user_context.get("genetics", {}),
-            baseline_biomarkers=user_context.get("current_biomarkers", {}),
-        )
-
-        # Infer environmental changes from location history
-        env_changes = self._infer_environmental_changes(
-            location_history=user_context.get("location_history", []),
-            environmental_data=environmental_data,
-        )
-
-        # Generate predictions (90-day horizon)
-        predictions = engine.predict(
-            model=model,
-            environmental_changes=env_changes,
-            horizon_days=90,
-        )
-
-        # Convert PredictionTimeline objects to dicts for serialization
-        predictions_dict = {
-            biomarker: timeline.model_dump()
-            for biomarker, timeline in predictions.items()
-        }
-
-        return predictions_dict
-
-    def _infer_environmental_changes(
-        self,
-        location_history: list,
-        environmental_data: Dict,
-    ) -> Dict[str, float]:
-        """Infer environmental changes from location history.
-
-        Args:
-            location_history: List of location history entries
-            environmental_data: Environmental data from web researcher
-
-        Returns:
-            Dictionary mapping environmental factor → multiplier (e.g., {"PM2.5": 1.8})
-        """
-        if not location_history:
-            return {}
-
-        # Check if environmental data has exposure deltas
-        if environmental_data.get("exposure_deltas"):
-            return environmental_data["exposure_deltas"]
-
-        # Fallback: Simple heuristic based on location
-        last_location = location_history[-1]
-        city = last_location.get("city", "").lower() if isinstance(last_location, dict) else ""
-
-        # LA has ~1.8x higher PM2.5 than SF (demo heuristic)
-        if "los angeles" in city or city == "la":
-            return {"PM2.5": 1.8}
-
-        return {}
 
 
 # Factory function for agent

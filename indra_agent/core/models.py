@@ -55,7 +55,7 @@ class CausalDiscoveryRequest(BaseModel):
 class Grounding(BaseModel):
     """Entity grounding to biological databases."""
 
-    database: Literal["MESH", "HGNC", "CHEBI", "GO"]
+    database: Literal["MESH", "HGNC", "CHEBI", "GO", "FPLX", "UP", "PUBCHEM", "NCIT"]
     identifier: str
 
 
@@ -172,9 +172,9 @@ class CausalDiscoveryResponse(BaseModel):
     explanations: List[str] = Field(
         min_length=1, max_length=5, description="3-5 human-readable explanations"
     )
-    predictions: Optional[Dict[str, PredictionTimeline]] = Field(
+    insights: Optional[Dict[str, Any]] = Field(
         default=None,
-        description="Temporal predictions for biomarkers (optional, requires user context)"
+        description="Qualitative insights from evidence-based causal hypothesis exploration (Path A)"
     )
 
 
@@ -202,3 +202,70 @@ class ErrorResponse(BaseModel):
     status: Literal["error"] = "error"
     error: ErrorInfo
     partial_result: Optional[Any] = None
+
+
+# Intervention API Models
+
+class Intervention(BaseModel):
+    """Single intervention specification."""
+
+    node_id: str = Field(..., description="Node to intervene on")
+    value: float = Field(..., description="Intervention value")
+    unit: Optional[str] = Field(None, description="Unit of measurement")
+
+
+class InterventionRequest(BaseModel):
+    """Request for /api/v1/intervene endpoint."""
+
+    request_id: str
+    graph_id: str = Field(..., description="Graph ID from /causal_discovery")
+    intervention: Intervention
+    target_biomarkers: List[str] = Field(..., description="Biomarkers to predict")
+    horizon_days: int = Field(90, ge=1, le=365)
+    confidence_level: float = Field(0.95, ge=0.5, le=0.99)
+    options: Dict[str, Any] = Field(default_factory=dict)
+
+
+class BiomarkerPrediction(BaseModel):
+    """Prediction for a single biomarker."""
+
+    baseline: Dict[str, float] = Field(
+        description="Baseline statistics: {mean, ci_lower, ci_upper}"
+    )
+    post_intervention: Dict[str, float] = Field(
+        description="Post-intervention statistics: {mean, ci_lower, ci_upper}"
+    )
+    delta: Dict[str, float] = Field(
+        description="Change: {absolute, percent}"
+    )
+    timeline: List[Dict[str, Any]] = Field(
+        description="Timeline points with day, mean, ci_lower, ci_upper, risk_level"
+    )
+
+
+class AffectedPathway(BaseModel):
+    """Causal pathway affected by intervention."""
+
+    pathway: List[str] = Field(description="Sequence of node IDs")
+    relationship_chain: List[str] = Field(description="Sequence of relationships")
+    total_effect_size: float = Field(ge=-1, le=1)
+    explanation: str = Field(max_length=200)
+
+
+class InterventionMetadata(BaseModel):
+    """Metadata for intervention response."""
+
+    computation_time_ms: int
+    graph_nodes: int
+    confidence_level: float
+
+
+class InterventionResponse(BaseModel):
+    """Success response for /api/v1/intervene endpoint."""
+
+    request_id: str
+    status: Literal["success"] = "success"
+    intervention_summary: Intervention
+    predictions: Dict[str, BiomarkerPrediction]
+    affected_pathways: List[AffectedPathway] = Field(default_factory=list)
+    metadata: InterventionMetadata

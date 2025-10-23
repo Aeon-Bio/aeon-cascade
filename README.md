@@ -1,29 +1,30 @@
-# INDRA Bio-Ontology Agentic System
+# Causal Inference API for Health Intelligence
 
-A LangGraph-based multi-agent system for querying the INDRA bio-ontology to discover causal paths between environmental exposures, molecular mechanisms, and clinical biomarkers.
+**Path A: Qualitative Causal Hypothesis Explorer** - An evidence-based inference engine that provides scientifically honest causal reasoning for health exploration. Built on literature-backed evidence from INDRA bio-ontology with transparent uncertainty acknowledgment.
 
 ## Overview
 
-This system receives health queries with user context, queries INDRA for causal paths, resolves biomarkers to molecular mechanisms, and returns structured causal graphs. It's designed for integration with an API gateway that handles user requests.
+This API enables AI agents to reason about causal relationships in health and generate evidence-based hypotheses about interventions ("What if this person moves to Seattle?"). Every causal edge is backed by scientific papers with categorical evidence strength ratings (strong/moderate/limited) and explicit caveats about limitations.
 
 ### Architecture
 
 ```
-User → API Gateway → FastAPI Server (this system) → LangGraph Multi-Agent System
-                                                    ├── Supervisor (orchestration)
-                                                    ├── INDRA Agent (bio-ontology queries)
-                                                    └── Web Researcher (environmental data)
+AI Agent → HTTP API / MCP Server → Causal Inference Engine
+                                    ├── Knowledge Integration (INDRA + MeSH)
+                                    ├── Graph Construction FSM (7 states)
+                                    ├── SCM Inference (Linear Gaussian)
+                                    └── Intervention Engine (do-calculus)
 ```
 
 ### Key Features
 
-- **LangGraph Supervisor Pattern**: Multi-agent orchestration with supervisor routing
-- **AWS Bedrock Integration**: Uses Claude Sonnet 4.5 via AWS Bedrock
-- **INDRA Integration**: Queries INDRA bio-ontology with caching for reliability
-- **Pre-defined Entity Grounding**: Fast biomarker→INDRA ID mapping
-- **Environmental Data**: Fetches pollution and exposure information
-- **Genetic Modifiers**: Applies user genetic variants to causal graphs
-- **Contract Compliant**: Matches API specification from `agentic-system-spec.md`
+- **Scientifically Honest**: Evidence-based hypotheses with explicit limitations and caveats
+- **Literature-Backed**: Every edge grounded in INDRA bio-ontology (3.8M+ statements)
+- **Categorical Evidence Strength**: Strong (>100 papers), Moderate (20-100), Limited (<20)
+- **Transparent Uncertainty**: No fake predictions - clear about what we know and don't know
+- **MCP Support**: Expose tools for agent-to-agent communication
+- **Validation**: Ensures graphs satisfy DAG constraints
+- **Testable Hypotheses**: Actionable recommendations with monitoring protocols
 
 ## Setup
 
@@ -40,23 +41,16 @@ User → API Gateway → FastAPI Server (this system) → LangGraph Multi-Agent 
 cp .env.example .env
 # Edit .env and add your AWS_ACCESS_KEY_ID and AWS_SECRET_ACCESS_KEY
 
-# 2. Build and start all services
+# 2. Build and start service
 docker-compose up --build
 
-# 3. Access services
-# - INDRA Agent: http://localhost:8000/docs
-# - Aeon Gateway: http://localhost:8001/docs
+# 3. Access API
+# - API Documentation: http://localhost:8000/docs
+# - Health Check: http://localhost:8000/health
 
-# 4. Verify health
+# 4. Verify
 curl http://localhost:8000/health
-curl http://localhost:8001/health
 ```
-
-See **[DOCKER_DEPLOYMENT.md](./DOCKER_DEPLOYMENT.md)** for complete deployment guide, including:
-- Individual service deployment
-- Production configuration
-- Kubernetes deployment
-- Monitoring and troubleshooting
 
 ### Option 2: Local Development
 

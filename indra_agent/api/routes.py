@@ -1,15 +1,36 @@
 """FastAPI routes for causal discovery API."""
 
 import logging
+import time
+import uuid
+import os
+import tempfile
+import networkx as nx
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, UploadFile, File, Request
+from sse_starlette.sse import EventSourceResponse
+import asyncio
+import json
 
 from indra_agent.core.client import INDRAAgentClient
+from indra_agent.core.progress import ProgressEmitter, ProgressUpdate, ProgressComplete
 from indra_agent.core.models import (
     CausalDiscoveryRequest,
     CausalDiscoveryResponse,
     ErrorResponse,
+    InterventionRequest,
+    InterventionResponse,
+    BiomarkerPrediction,
+    AffectedPathway,
+    InterventionMetadata,
 )
+from indra_agent.services.graph_store import get_graph_store
+from indra_agent.services.scm_inference import SCMInferenceEngine
+from indra_agent.services.vcf_parser import VCFParser
+from indra_agent.services.lab_parser import LabParser
+from indra_agent.services.environmental_parser import EnvironmentalParser
+from indra_agent.services.graph_analysis import GraphAnalysisService
+from indra_agent.agents.validation_agent import ValidationAgent
 
 logger = logging.getLogger(__name__)
 
@@ -64,12 +85,83 @@ async def causal_discovery(
         client = get_client()
         response = await client.process_request(request)
 
-        # Log result
+        # Store graph for later intervention queries
         if isinstance(response, CausalDiscoveryResponse):
+            # Validate graph before storing
+            validator = ValidationAgent()
+            validation = validator.validate_graph(response.causal_graph)
+
+            # Auto-fix violations if found
+            if not validation["is_valid"]:
+                logger.warning(
+                    f"Graph validation failed for request {request.request_id}: "
+                    f"{len(validation['errors'])} errors found. Attempting auto-fix..."
+                )
+
+                # Fix violations
+                fixed_graph = validator.fix_violations(response.causal_graph)
+
+                # Re-validate
+                fixed_validation = validator.validate_graph(fixed_graph)
+
+                if fixed_validation["is_valid"]:
+                    logger.info(
+                        f"Graph auto-fixed successfully for request {request.request_id}"
+                    )
+                    response.causal_graph = fixed_graph
+
+                    # Add validation metadata to key insights
+                    validation_summary = (
+                        f"⚠️ Graph validation found {len(validation['errors'])} issues "
+                        f"({', '.join(validation['errors'][:2])}). Auto-fixed successfully."
+                    )
+                    if response.key_insights:
+                        response.key_insights.append(validation_summary)
+                    else:
+                        response.key_insights = [validation_summary]
+                else:
+                    logger.error(
+                        f"Graph auto-fix failed for request {request.request_id}. "
+                        f"Remaining errors: {fixed_validation['errors']}"
+                    )
+                    # Continue with original graph but warn user
+                    warning_msg = (
+                        f"⚠️ Graph has {len(validation['errors'])} validation issues "
+                        f"that could not be auto-fixed. Predictions may be unstable."
+                    )
+                    if response.key_insights:
+                        response.key_insights.append(warning_msg)
+                    else:
+                        response.key_insights = [warning_msg]
+            elif validation["warnings"]:
+                logger.info(
+                    f"Graph validation passed with {len(validation['warnings'])} warnings "
+                    f"for request {request.request_id}"
+                )
+                # Add warnings to insights
+                for warning in validation["warnings"][:2]:  # Limit to 2 warnings
+                    if response.key_insights:
+                        response.key_insights.append(f"ℹ️ {warning}")
+                    else:
+                        response.key_insights = [f"ℹ️ {warning}"]
+
+            graph_store = get_graph_store()
+            graph_id = f"graph-{request.request_id}"
+
+            # Extract baseline values from user context
+            baseline_values = request.user_context.current_biomarkers.copy()
+
+            graph_store.store(
+                graph_id=graph_id,
+                graph=response.causal_graph,
+                baseline_values=baseline_values,
+            )
+
             logger.info(
                 f"Request {request.request_id} succeeded: "
                 f"{len(response.causal_graph.nodes)} nodes, "
-                f"{len(response.causal_graph.edges)} edges"
+                f"{len(response.causal_graph.edges)} edges. "
+                f"Stored as {graph_id}"
             )
         else:
             logger.warning(
@@ -88,3 +180,683 @@ async def causal_discovery(
                 "message": f"Unexpected error: {str(e)}",
             },
         )
+
+
+# Global request store (in-memory for MVP; use Redis/DB in production)
+_pending_requests = {}
+
+
+@router.post("/api/v1/submit_request")
+async def submit_request(discovery_request: CausalDiscoveryRequest):
+    """Submit a causal discovery request for processing via SSE.
+
+    This endpoint queues the request and returns a request_id that can be used
+    to connect to the SSE stream endpoint.
+
+    Args:
+        discovery_request: Causal discovery request
+
+    Returns:
+        Dictionary with request_id for SSE connection
+    """
+    request_id = discovery_request.request_id
+    _pending_requests[request_id] = discovery_request
+    logger.info(f"Queued request {request_id} for SSE processing")
+
+    return {"request_id": request_id, "stream_url": f"/api/v1/stream/{request_id}"}
+
+
+@router.get(
+    "/api/v1/stream/{request_id}",
+    responses={
+        200: {"description": "Server-Sent Events stream with real-time progress"},
+        404: {"description": "Request not found"},
+        500: {"description": "Internal server error"},
+    },
+)
+async def stream_progress(request_id: str, request: Request):
+    """Stream real-time progress updates via Server-Sent Events.
+
+    This endpoint provides granular progress updates during causal discovery
+    workflow execution. Frontend uses EventSource API to receive updates.
+
+    Args:
+        request_id: Unique request identifier
+        request: FastAPI Request object (for client disconnect detection)
+
+    Yields:
+        SSE events:
+            - "progress": ProgressUpdate (step, agent, action, percent, metadata)
+            - "complete": ProgressComplete (status, data, total_duration_ms)
+            - "ping": Keepalive (every 60s if no updates)
+
+    Example client-side:
+        ```javascript
+        // 1. Submit request
+        const response = await fetch('/api/v1/submit_request', {
+            method: 'POST',
+            body: JSON.stringify(request),
+        });
+        const { request_id } = await response.json();
+
+        // 2. Connect to SSE stream
+        const eventSource = new EventSource(`/api/v1/stream/${request_id}`);
+        eventSource.addEventListener('progress', (e) => {
+            const update = JSON.parse(e.data);
+            console.log(`${update.progress_percent}% - ${update.action}`);
+        });
+        eventSource.addEventListener('complete', (e) => {
+            const result = JSON.parse(e.data);
+            console.log('Complete!', result.data);
+            eventSource.close();
+        });
+        ```
+    """
+    logger.info(f"SSE stream started for request: {request_id}")
+
+    # Retrieve pending request
+    discovery_request = _pending_requests.pop(request_id, None)
+    if not discovery_request:
+        raise HTTPException(
+            status_code=404, detail=f"Request {request_id} not found. Submit request first via /api/v1/submit_request"
+        )
+
+    async def event_generator():
+        """Generate SSE events from workflow execution."""
+        # Create progress queue for thread-safe updates
+        progress_queue = asyncio.Queue()
+
+        async def progress_callback(update: ProgressUpdate):
+            """Callback invoked by ProgressEmitter."""
+            await progress_queue.put(("progress", update))
+
+        # Create emitter
+        emitter = ProgressEmitter(callback=progress_callback)
+
+        # Run workflow with progress in background task
+        async def run_workflow():
+            """Execute workflow and emit completion event."""
+            try:
+                client = get_client()
+
+                # Pass progress_emitter to client
+                response = await client.process_request(discovery_request, progress_emitter=emitter)
+
+                # Send completion
+                if isinstance(response, CausalDiscoveryResponse):
+                    complete = ProgressComplete(
+                        status="success",
+                        data=response.model_dump(),
+                        total_duration_ms=emitter.total_elapsed_ms(),
+                    )
+                else:
+                    complete = ProgressComplete(
+                        status="error",
+                        data=response.model_dump(),
+                        total_duration_ms=emitter.total_elapsed_ms(),
+                    )
+
+                await progress_queue.put(("complete", complete))
+
+            except Exception as e:
+                logger.error(f"Workflow error: {e}", exc_info=True)
+                error_complete = ProgressComplete(
+                    status="error",
+                    data={
+                        "error": {
+                            "code": "WORKFLOW_ERROR",
+                            "message": str(e),
+                        }
+                    },
+                    total_duration_ms=emitter.total_elapsed_ms(),
+                )
+                await progress_queue.put(("complete", error_complete))
+
+        # Start workflow task
+        workflow_task = asyncio.create_task(run_workflow())
+
+        # Stream events to client
+        try:
+            while True:
+                # Check if client disconnected
+                if await request.is_disconnected():
+                    logger.info(f"Client disconnected from SSE stream: {request_id}")
+                    break
+
+                try:
+                    # Wait for next event (60s timeout for keepalive)
+                    event_type, data = await asyncio.wait_for(
+                        progress_queue.get(), timeout=60
+                    )
+
+                    if event_type == "complete":
+                        # Send final event and exit
+                        yield {
+                            "event": "complete",
+                            "data": data.model_dump_json(),
+                        }
+                        logger.info(
+                            f"SSE stream completed for request: {request_id} "
+                            f"({data.status})"
+                        )
+                        break
+                    else:  # progress
+                        yield {
+                            "event": "progress",
+                            "data": data.model_dump_json(),
+                        }
+
+                except asyncio.TimeoutError:
+                    # Send keepalive ping
+                    yield {
+                        "event": "ping",
+                        "data": json.dumps({"status": "alive", "request_id": request_id}),
+                    }
+
+        except asyncio.CancelledError:
+            logger.info(f"SSE stream cancelled for request: {request_id}")
+            raise
+        finally:
+            # Ensure workflow task completes or is cancelled
+            if not workflow_task.done():
+                workflow_task.cancel()
+                try:
+                    await workflow_task
+                except asyncio.CancelledError:
+                    pass
+
+    return EventSourceResponse(event_generator())
+
+
+@router.post(
+    "/api/v1/intervene",
+    response_model=InterventionResponse,
+    responses={
+        200: {
+            "description": "Successful intervention",
+            "model": InterventionResponse,
+        },
+        404: {"description": "Graph not found"},
+        400: {"description": "Invalid request"},
+        500: {"description": "Internal server error"},
+    },
+)
+async def intervene(request: InterventionRequest) -> InterventionResponse:
+    """Perform causal intervention and generate counterfactual predictions.
+
+    This endpoint uses do-calculus to compute what would happen if we
+    intervene on a specific node (e.g., "What if PM2.5 = 10?").
+
+    Args:
+        request: Intervention request
+
+    Returns:
+        InterventionResponse with predictions
+
+    Raises:
+        HTTPException: If graph not found or intervention invalid
+    """
+    logger.info(f"Received intervention request: {request.request_id}")
+
+    start_time = time.time()
+
+    try:
+        # Retrieve graph from store
+        graph_store = get_graph_store()
+
+        try:
+            stored_data = graph_store.retrieve(request.graph_id)
+        except ValueError as e:
+            raise HTTPException(status_code=404, detail=str(e))
+
+        graph = stored_data["graph"]
+        baseline_values = stored_data["baseline_values"]
+
+        # Build SCM
+        scm_engine = SCMInferenceEngine()
+        scm = scm_engine.build_scm(graph, baseline_values)
+
+        # Compute baseline (observational) predictions
+        baseline_predictions = scm_engine.predict(
+            scm,
+            target_biomarkers=request.target_biomarkers,
+            horizon_days=request.horizon_days,
+        )
+
+        # Compute interventional predictions
+        interventions = {request.intervention.node_id: request.intervention.value}
+
+        interventional_predictions = scm_engine.intervene(
+            scm,
+            interventions=interventions,
+            target_biomarkers=request.target_biomarkers,
+            horizon_days=request.horizon_days,
+        )
+
+        # Build response predictions
+        predictions = {}
+
+        for biomarker_id in request.target_biomarkers:
+            if biomarker_id not in interventional_predictions:
+                continue
+
+            baseline_pred = baseline_predictions.get(biomarker_id)
+            int_pred = interventional_predictions[biomarker_id]
+
+            # Extract means from timelines
+            baseline_mean = baseline_pred.timeline[-1]["mean"] if baseline_pred else 0.0
+            int_mean = int_pred.timeline[-1]["mean"]
+
+            # Compute delta
+            delta_absolute = int_mean - baseline_mean
+            delta_percent = (
+                100 * delta_absolute / baseline_mean if baseline_mean != 0 else 0.0
+            )
+
+            predictions[biomarker_id] = BiomarkerPrediction(
+                baseline={
+                    "mean": baseline_mean,
+                    "ci_lower": baseline_pred.timeline[-1]["confidence_interval"][0] if baseline_pred else 0.0,
+                    "ci_upper": baseline_pred.timeline[-1]["confidence_interval"][1] if baseline_pred else 0.0,
+                },
+                post_intervention={
+                    "mean": int_mean,
+                    "ci_lower": int_pred.timeline[-1]["confidence_interval"][0],
+                    "ci_upper": int_pred.timeline[-1]["confidence_interval"][1],
+                },
+                delta={
+                    "absolute": round(delta_absolute, 2),
+                    "percent": round(delta_percent, 1),
+                },
+                timeline=int_pred.timeline,
+            )
+
+        # Identify affected pathways
+        affected_pathways = _identify_affected_pathways(
+            graph,
+            source=request.intervention.node_id,
+            targets=request.target_biomarkers,
+            scm_engine=scm_engine,
+            scm=scm,
+        )
+
+        # Compute elapsed time
+        elapsed_ms = int((time.time() - start_time) * 1000)
+
+        logger.info(
+            f"Intervention request {request.request_id} completed in {elapsed_ms}ms"
+        )
+
+        return InterventionResponse(
+            request_id=request.request_id,
+            intervention_summary=request.intervention,
+            predictions=predictions,
+            affected_pathways=affected_pathways,
+            metadata=InterventionMetadata(
+                computation_time_ms=elapsed_ms,
+                graph_nodes=len(graph.nodes),
+                confidence_level=request.confidence_level,
+            ),
+        )
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Unexpected error in intervention: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Internal error: {str(e)}")
+
+
+def _identify_affected_pathways(
+    graph,
+    source: str,
+    targets: list,
+    scm_engine: SCMInferenceEngine,
+    scm: dict,
+) -> list:
+    """Identify causal pathways from source to targets.
+
+    Args:
+        graph: CausalGraph
+        source: Source node ID
+        targets: List of target node IDs
+        scm_engine: SCM inference engine
+        scm: Built SCM
+
+    Returns:
+        List of AffectedPathway objects
+    """
+    pathways = []
+
+    # Build NetworkX graph for path finding
+    G = nx.DiGraph()
+    for edge in graph.edges:
+        G.add_edge(edge.source, edge.target, edge_data=edge)
+
+    for target in targets:
+        if target not in G or source not in G:
+            continue
+
+        try:
+            # Find all simple paths (up to 3 paths)
+            paths = list(nx.all_simple_paths(G, source, target, cutoff=5))
+
+            for path in paths[:3]:  # Limit to top 3
+                # Compute total effect
+                effect_result = scm_engine.compute_causal_effect(scm, source, target)
+                total_effect = effect_result.get("total_effect", 0.0)
+
+                # Build relationship chain
+                relationship_chain = []
+                for i in range(len(path) - 1):
+                    edge_data = G[path[i]][path[i + 1]]["edge_data"]
+                    relationship_chain.append(edge_data.relationship)
+
+                # Generate explanation
+                path_str = " → ".join(path)
+                explanation = f"Intervention on {source} affects {target} via {path_str}"
+
+                pathways.append(
+                    AffectedPathway(
+                        pathway=path,
+                        relationship_chain=relationship_chain,
+                        total_effect_size=round(total_effect, 2),
+                        explanation=explanation[:200],  # Truncate to 200 chars
+                    )
+                )
+
+        except nx.NetworkXNoPath:
+            continue
+
+    return pathways
+
+
+@router.post(
+    "/api/v1/upload/vcf",
+    responses={
+        200: {"description": "VCF file parsed successfully"},
+        400: {"description": "Invalid VCF file"},
+        500: {"description": "Internal server error"},
+    },
+)
+async def upload_vcf(file: UploadFile = File(...)):
+    """Upload and parse a VCF (Variant Call Format) genetic data file.
+
+    Accepts .vcf files from services like 23andMe, Ancestry.com, etc.
+    Returns parsed genetic variants with functional annotations.
+
+    Args:
+        file: Uploaded VCF file
+
+    Returns:
+        Dictionary with user_id, variants, and variant count
+
+    Raises:
+        HTTPException: If file format is invalid
+    """
+    logger.info(f"Received VCF upload: {file.filename}")
+
+    # Save uploaded file to temp location
+    with tempfile.NamedTemporaryFile(mode='wb', delete=False, suffix='.vcf') as tmp:
+        content = await file.read()
+        tmp.write(content)
+        tmp_path = tmp.name
+
+    try:
+        # Parse VCF
+        parser = VCFParser()
+        report = parser.parse_vcf(tmp_path)
+
+        # Convert to usable formats
+        genetics_dict = parser.to_genetics_dict(report)
+        effect_modifiers = parser.to_effect_modifiers(report)
+
+        logger.info(f"Parsed VCF for {report.patient_id}: {len(report.variants)} variants")
+
+        return {
+            "user_id": report.patient_id,
+            "reference_genome": report.reference_genome,
+            "file_date": report.file_date,
+            "variant_count": len(report.variants),
+            "genetics": genetics_dict,
+            "effect_modifiers": effect_modifiers,
+            "variants": [
+                {
+                    "id": v.variant_id,
+                    "gene": v.gene_symbol,
+                    "genotype": v.genotype,
+                    "effect_size": v.effect_size,
+                    "functional_effect": v.functional_effect,
+                    "pmid": v.pmid
+                }
+                for v in report.variants
+                if v.effect_size  # Only include variants with known effects
+            ]
+        }
+
+    except Exception as e:
+        logger.error(f"Error parsing VCF: {e}", exc_info=True)
+        raise HTTPException(status_code=400, detail=f"Invalid VCF file: {str(e)}")
+    finally:
+        # Clean up temp file
+        if os.path.exists(tmp_path):
+            os.unlink(tmp_path)
+
+
+@router.post(
+    "/api/v1/upload/lab_report",
+    responses={
+        200: {"description": "Lab report parsed successfully"},
+        400: {"description": "Invalid lab report format"},
+        500: {"description": "Internal server error"},
+    },
+)
+async def upload_lab_report(file: UploadFile = File(...)):
+    """Upload and parse a lab report (Quest Diagnostics or LabCorp format).
+
+    Accepts text format lab reports with biomarker measurements.
+
+    Args:
+        file: Uploaded lab report file (.txt)
+
+    Returns:
+        Dictionary with patient_id, test_date, and biomarker measurements
+
+    Raises:
+        HTTPException: If file format is invalid
+    """
+    logger.info(f"Received lab report upload: {file.filename}")
+
+    # Save uploaded file to temp location
+    with tempfile.NamedTemporaryFile(mode='wb', delete=False, suffix='.txt') as tmp:
+        content = await file.read()
+        tmp.write(content)
+        tmp_path = tmp.name
+
+    try:
+        # Parse lab report
+        parser = LabParser()
+        report = parser.parse_lab_report(tmp_path)
+
+        # Convert to biomarker dictionary
+        biomarkers = parser.to_biomarker_dict(report)
+
+        logger.info(f"Parsed lab report for {report.patient_id}: {len(report.measurements)} biomarkers")
+
+        return {
+            "patient_id": report.patient_id,
+            "test_date": report.test_date.isoformat(),
+            "lab_source": report.lab_source,
+            "biomarker_count": len(report.measurements),
+            "biomarkers": biomarkers,
+            "measurements": [
+                {
+                    "name": m.name,
+                    "value": m.value,
+                    "unit": m.unit,
+                    "reference_range": m.reference_range,
+                    "flag": m.flag
+                }
+                for m in report.measurements
+            ],
+            "physician_notes": report.physician_notes
+        }
+
+    except Exception as e:
+        logger.error(f"Error parsing lab report: {e}", exc_info=True)
+        raise HTTPException(status_code=400, detail=f"Invalid lab report: {str(e)}")
+    finally:
+        # Clean up temp file
+        if os.path.exists(tmp_path):
+            os.unlink(tmp_path)
+
+
+@router.post(
+    "/api/v1/upload/environmental",
+    responses={
+        200: {"description": "Environmental data parsed successfully"},
+        400: {"description": "Invalid environmental data format"},
+        500: {"description": "Internal server error"},
+    },
+)
+async def upload_environmental(file: UploadFile = File(...)):
+    """Upload and parse environmental exposure data (JSON format).
+
+    Accepts JSON files with location history and pollution data.
+
+    Args:
+        file: Uploaded environmental data file (.json)
+
+    Returns:
+        Dictionary with location history and exposure summary
+
+    Raises:
+        HTTPException: If file format is invalid
+    """
+    logger.info(f"Received environmental data upload: {file.filename}")
+
+    try:
+        # Read JSON content directly (no temp file needed for JSON)
+        content = await file.read()
+
+        # Parse environmental data
+        parser = EnvironmentalParser()
+
+        # Assuming parser has a method to parse JSON content
+        # If not, we'll need to check the actual interface
+        import json
+        data = json.loads(content.decode('utf-8'))
+
+        # Extract location history (assuming this structure)
+        location_history = data.get('location_history', [])
+        user_id = data.get('user_id', 'unknown')
+
+        logger.info(f"Parsed environmental data for {user_id}: {len(location_history)} locations")
+
+        return {
+            "user_id": user_id,
+            "location_count": len(location_history),
+            "location_history": location_history,
+            "exposure_summary": {
+                "avg_pm25": sum(loc.get('avg_pm25', 0) for loc in location_history) / len(location_history) if location_history else 0,
+                "locations": [loc.get('city') for loc in location_history]
+            }
+        }
+
+    except Exception as e:
+        logger.error(f"Error parsing environmental data: {e}", exc_info=True)
+        raise HTTPException(status_code=400, detail=f"Invalid environmental data: {str(e)}")
+
+
+@router.post(
+    "/api/v1/graph/analyze",
+    responses={
+        200: {"description": "Graph analysis completed successfully"},
+        404: {"description": "Graph not found"},
+        500: {"description": "Internal server error"},
+    },
+)
+async def analyze_graph(request: dict):
+    """Analyze causal graph for feedback loops, convergent nodes, and synergies.
+
+    This endpoint exposes GraphAnalysisService methods to identify:
+    - Feedback loops (cycles) in the causal graph
+    - Convergent nodes (high-value intervention targets)
+    - Multi-target synergy scores for interventions
+    - Pathways between specific nodes
+
+    Args:
+        request: Dictionary with:
+            - graph_id: str (required) - ID of stored graph
+            - source_id: str (optional) - For pathway analysis
+            - target_id: str (optional) - For pathway analysis
+            - intervention_node: str (optional) - For synergy analysis
+            - target_biomarkers: List[str] (optional) - For synergy analysis
+
+    Returns:
+        Dictionary with analysis results:
+            - feedback_loops: List of detected cycles
+            - convergent_nodes: List of nodes with ≥2 incoming edges
+            - pathways: List of paths (if source/target provided)
+            - synergy_analysis: Synergy scores (if intervention_node provided)
+
+    Raises:
+        HTTPException: If graph not found or analysis fails
+    """
+    logger.info(f"Received graph analysis request for {request.get('graph_id')}")
+
+    try:
+        graph_id = request.get('graph_id')
+        if not graph_id:
+            raise HTTPException(status_code=400, detail="graph_id is required")
+
+        # Retrieve graph from store
+        graph_store = get_graph_store()
+
+        try:
+            stored_data = graph_store.retrieve(graph_id)
+        except ValueError as e:
+            raise HTTPException(status_code=404, detail=str(e))
+
+        graph = stored_data["graph"]
+
+        # Initialize graph analysis service
+        analyzer = GraphAnalysisService()
+
+        # Always compute feedback loops and convergent nodes
+        feedback_loops = analyzer.detect_feedback_loops(graph)
+        convergent_nodes = analyzer.find_convergent_nodes(graph, min_in_degree=2)
+
+        result = {
+            "graph_id": graph_id,
+            "feedback_loops": feedback_loops,
+            "convergent_nodes": convergent_nodes,
+        }
+
+        # Optional: pathway analysis
+        source_id = request.get('source_id')
+        target_id = request.get('target_id')
+        if source_id and target_id:
+            pathways = analyzer.find_pathways(graph, source_id, target_id, max_depth=5)
+            result["pathways"] = pathways
+
+        # Optional: synergy analysis
+        intervention_node = request.get('intervention_node')
+        target_biomarkers = request.get('target_biomarkers', [])
+        if intervention_node and target_biomarkers:
+            synergy = analyzer.compute_multi_target_synergy(
+                graph, intervention_node, target_biomarkers
+            )
+            result["synergy_analysis"] = synergy
+
+        logger.info(
+            f"Graph analysis completed: {len(feedback_loops)} loops, "
+            f"{len(convergent_nodes)} convergent nodes"
+        )
+
+        return result
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Unexpected error in graph analysis: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Internal error: {str(e)}")
