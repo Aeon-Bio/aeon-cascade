@@ -1,38 +1,135 @@
-# Causal Inference API for Health Intelligence
+# Aeon Cascade - Systems Medicine Health Intelligence
 
-**Path A: Qualitative Causal Hypothesis Explorer** - An evidence-based inference engine that provides scientifically honest causal reasoning for health exploration. Built on literature-backed evidence from INDRA bio-ontology with transparent uncertainty acknowledgment.
+A multi-factor health intelligence system that discovers synergistic interventions across multiple conditions using **systems medicine**, powered by INDRA bio-ontology and structural causal models.
 
 ## Overview
 
-This API enables AI agents to reason about causal relationships in health and generate evidence-based hypotheses about interventions ("What if this person moves to Seattle?"). Every causal edge is backed by scientific papers with categorical evidence strength ratings (strong/moderate/limited) and explicit caveats about limitations.
+Aeon Cascade enables evidence-based causal reasoning about health interventions by integrating:
+- **INDRA Bio-Ontology**: 3.8M+ literature-backed causal statements
+- **Multi-Agent Architecture**: LangGraph workflow with specialized agents
+- **Genetic Context**: Personalized analysis with genetic modifiers
+- **Environmental Integration**: Pollution exposure and location-based factors
+- **Structural Causal Models**: Quantitative intervention predictions
+
+Every causal relationship is backed by peer-reviewed scientific papers with evidence counts and confidence scores.
+
+### Clinical Use Case Example
+
+**Sarah Chen** (34, Software Engineer):
+- **Conditions**: Chronic inflammation (CRP: 5.2 mg/L) + Prediabetes (HbA1c: 5.9%)
+- **Environment**: High PM2.5 exposure in Los Angeles (35 µg/m³)
+- **Challenge**: Two interconnected conditions with shared molecular mechanisms
+
+**Traditional Approach**: Treat inflammation and prediabetes separately → miss synergies
+
+**Systems Medicine Approach**: Identify upstream intervention (reduce PM2.5) that simultaneously:
+- ↓ Oxidative stress → ↓ Inflammation (CRP: 5.2 → 4.36 mg/L, -16%)
+- ↓ Oxidative stress → ↓ Insulin resistance (HbA1c: 5.9% → 4.77%, -19%)
+- **Synergy Score**: 1.34 (34% super-additive benefit from cross-pathway effects)
+
+**Query**: "If Sarah moves from LA to Seattle (PM2.5: 10 µg/m³), how will her inflammation AND metabolic markers respond?"
 
 ### Architecture
 
+**Telegram Bot Mode:**
 ```
-AI Agent → HTTP API / MCP Server → Causal Inference Engine
-                                    ├── Knowledge Integration (INDRA + MeSH)
-                                    ├── Graph Construction FSM (7 states)
-                                    ├── SCM Inference (Linear Gaussian)
-                                    └── Intervention Engine (do-calculus)
+User → Telegram → aeon_cascade_frontend (bot.py)
+                       ↓
+                [Health Query Detection]
+                       ↓
+            ┌──────────┴──────────┐
+            ↓                     ↓
+     Health Query           General Query
+            ↓                     ↓
+   INDRA Agent (direct)     OpenAI GPT-4
+            ↓                     ↓
+   Formatted Result         Chat Response
 ```
+
+**API Mode:**
+```
+Client → HTTP API / MCP Server → LangGraph Workflow
+                                    ├── Supervisor (orchestration)
+                                    ├── INDRA Query Agent (bio-ontology)
+                                    ├── Web Researcher (environmental data)
+                                    └── Graph Builder (causal inference)
+```
+
+### Deployment Modes
+
+**1. Telegram Bot (aeon_cascade_frontend)**
+- Interactive health assistant via Telegram
+- Automatic health query detection
+- Integrated with INDRA agent via direct Python imports
+- Falls back to OpenAI GPT-4 for general queries
+- User health profile storage (genetics, biomarkers, location history)
+
+**2. Standalone API**
+- REST API for agent-to-agent communication
+- FastAPI with interactive docs (`/docs`)
+- MCP server support for Claude Desktop integration
+- Direct integration into custom applications
 
 ### Key Features
 
-- **Scientifically Honest**: Evidence-based hypotheses with explicit limitations and caveats
-- **Literature-Backed**: Every edge grounded in INDRA bio-ontology (3.8M+ statements)
-- **Categorical Evidence Strength**: Strong (>100 papers), Moderate (20-100), Limited (<20)
-- **Transparent Uncertainty**: No fake predictions - clear about what we know and don't know
-- **MCP Support**: Expose tools for agent-to-agent communication
-- **Validation**: Ensures graphs satisfy DAG constraints
-- **Testable Hypotheses**: Actionable recommendations with monitoring protocols
+- **Evidence-Based**: Every causal edge backed by scientific papers from INDRA (3.8M+ statements)
+- **Personalized Analysis**: Incorporates genetic variants and individual biomarker levels
+- **Environmental Context**: Pollution exposure, location history, and exposure deltas
+- **Multi-Condition**: Discovers synergistic interventions across interconnected conditions
+- **Transparent Evidence**: Paper counts, confidence scores, and PMID references
+- **Graph Validation**: Ensures DAG constraints and causal validity
 
 ## Setup
 
-### Option 1: Docker (Recommended for Production)
+### Option 1: Telegram Bot Deployment (Full Health Assistant)
+
+**Prerequisites:**
+- Docker 20.10+ with Docker Compose v2.0+
+- Telegram Bot Token (from @BotFather)
+- OpenAI API Key
+- AWS Bedrock access (Claude Sonnet 4.5)
+- MongoDB (included in docker-compose)
+
+**Quick Start:**
+```bash
+# Navigate to Telegram bot directory
+cd aeon_cascade_frontend/
+
+# Create config from example
+cp config/config.env.example config/config.env
+
+# Edit config/config.env and add:
+# - TELEGRAM_TOKEN=your-bot-token
+# - OPENAI_API_KEY=your-openai-key
+# - AWS_ACCESS_KEY_ID=your-aws-key
+# - AWS_SECRET_ACCESS_KEY=your-aws-secret
+# - AWS_REGION=us-east-1
+
+# Build and start all services (bot + MongoDB + INDRA agent)
+docker-compose --env-file config/config.env up --build
+
+# Bot is now live on Telegram!
+# Access MongoDB admin: http://localhost:8081
+```
+
+**What's Included:**
+- Telegram bot with health query auto-detection
+- INDRA agent integration (direct Python imports)
+- OpenAI GPT-4 fallback for general queries
+- MongoDB for user profiles and health data
+- Voice transcription (Whisper)
+- Image generation (DALL-E)
+
+**Usage:**
+1. Start a chat with your bot on Telegram
+2. Ask health questions: "How does pollution affect inflammation?"
+3. Bot auto-detects and routes to INDRA agent
+4. For general queries, falls back to GPT-4
+
+### Option 2: Standalone API (For Integration)
 
 **Prerequisites:**
 - Docker 20.10+ with BuildKit
-- Docker Compose v2.0+
 - AWS account with Bedrock access
 
 **Quick Start:**
@@ -41,7 +138,7 @@ AI Agent → HTTP API / MCP Server → Causal Inference Engine
 cp .env.example .env
 # Edit .env and add your AWS_ACCESS_KEY_ID and AWS_SECRET_ACCESS_KEY
 
-# 2. Build and start service
+# 2. Build and start API server
 docker-compose up --build
 
 # 3. Access API
@@ -52,55 +149,61 @@ docker-compose up --build
 curl http://localhost:8000/health
 ```
 
-### Option 2: Local Development
+### Option 3: Local Development (No Docker)
 
 **Prerequisites:**
-- Python 3.12+
-- AWS account with Bedrock access (for Claude Sonnet 4.5)
-- AWS credentials (access key ID and secret access key)
+- Python 3.11+
+- AWS account with Bedrock access (Claude Sonnet 4.5)
 
 **Installation:**
 
-1. Clone and navigate to hackathon directory:
 ```bash
-cd /path/to/omics-os/hackathon
-```
-
-2. Create virtual environment:
-```bash
-python -m venv .venv
-source .venv/bin/activate  # On Windows: .venv\Scripts\activate
-```
-
-3. Install dependencies:
-```bash
+# 1. Install indra_agent package (editable mode)
 pip install -e .
-```
 
-4. Create `.env` file from example:
-```bash
+# 2. For Telegram bot: install additional dependencies
+cd aeon_cascade_frontend/
+pip install -r requirements.txt
+cd ..
+
+# 3. Create .env file
 cp .env.example .env
+
+# 4. Edit .env and add credentials:
+# AWS_ACCESS_KEY_ID=your-key
+# AWS_SECRET_ACCESS_KEY=your-secret
+# AWS_REGION=us-east-1
+#
+# For Telegram bot, also edit aeon_cascade_frontend/config/config.env:
+# TELEGRAM_TOKEN=your-bot-token
+# OPENAI_API_KEY=your-openai-key
 ```
 
-5. Edit `.env` and add your AWS credentials:
+**Note**: Your AWS account must have access to `us.anthropic.claude-sonnet-4-5-20250129-v1:0` on Bedrock.
+
+## Running Locally
+
+### Telegram Bot Mode
+
 ```bash
-AWS_ACCESS_KEY_ID=your-aws-access-key-id
-AWS_SECRET_ACCESS_KEY=your-aws-secret-access-key
-AWS_REGION=us-east-1
+cd aeon_cascade_frontend/
+python bot/bot.py
 ```
 
-**Note**: Make sure your AWS account has access to Claude Sonnet 4.5 on Bedrock in the specified region.
+The bot will:
+- Connect to Telegram
+- Auto-detect health queries → route to INDRA agent
+- Handle general queries → route to OpenAI GPT-4
+- Store user context in MongoDB (start MongoDB separately if needed)
 
-## Running the Server
-
-### Development Mode
+### API Server Mode
 
 ```bash
-# From hackathon directory
+# From project root
 python -m indra_agent.main
 ```
 
-Or with uvicorn directly:
+Or with uvicorn:
 ```bash
 uvicorn indra_agent.main:app --reload --host 0.0.0.0 --port 8000
 ```
@@ -108,7 +211,24 @@ uvicorn indra_agent.main:app --reload --host 0.0.0.0 --port 8000
 The API will be available at:
 - **API Endpoint**: `http://localhost:8000/api/v1/causal_discovery`
 - **Health Check**: `http://localhost:8000/health`
-- **API Docs**: `http://localhost:8000/docs`
+- **Interactive Docs**: `http://localhost:8000/docs`
+
+### MCP Server Mode (Claude Desktop Integration)
+
+```bash
+# Add to Claude Desktop config (~/.config/claude/claude_desktop_config.json):
+{
+  "mcpServers": {
+    "aeon_cascade": {
+      "command": "python",
+      "args": ["-m", "indra_agent.mcp_server"],
+      "cwd": "/path/to/digitalme"
+    }
+  }
+}
+
+# Restart Claude Desktop to activate
+```
 
 ## API Usage
 
@@ -251,33 +371,49 @@ curl -X POST http://localhost:8000/api/v1/causal_discovery \
 ## Project Structure
 
 ```
-hackathon/
-├── indra_agent/
-│   ├── agents/              # LangGraph agents
-│   │   ├── supervisor.py    # Orchestration agent
-│   │   ├── indra_query_agent.py  # INDRA bio-ontology queries
-│   │   ├── web_researcher.py     # Environmental data
-│   │   ├── state.py         # State definitions
-│   │   └── graph.py         # LangGraph workflow
+digitalme/
+├── indra_agent/                    # Health intelligence backend
+│   ├── agents/                     # LangGraph multi-agent system
+│   │   ├── supervisor.py           # Orchestration agent
+│   │   ├── indra_query_agent.py    # INDRA bio-ontology queries
+│   │   ├── web_researcher.py       # Environmental data
+│   │   ├── mesh_enrichment_agent.py# MeSH ontology enrichment
+│   │   ├── state.py                # State definitions
+│   │   └── graph.py                # LangGraph workflow
 │   ├── api/
-│   │   └── routes.py        # FastAPI endpoints
+│   │   └── routes.py               # FastAPI endpoints
 │   ├── config/
-│   │   ├── settings.py      # Environment config
-│   │   ├── agent_config.py  # Agent configurations
-│   │   └── cached_responses.py  # Pre-cached INDRA paths
+│   │   ├── settings.py             # Environment config
+│   │   ├── agent_config.py         # Agent prompts & configs
+│   │   └── cached_responses.py     # Pre-cached INDRA paths
 │   ├── core/
-│   │   ├── client.py        # LangGraph client wrapper
-│   │   ├── models.py        # Pydantic models
-│   │   └── state_manager.py # State management
-│   ├── services/            # Stateless services
-│   │   ├── grounding_service.py  # Entity grounding
-│   │   ├── indra_service.py      # INDRA API wrapper
-│   │   ├── graph_builder.py      # Causal graph construction
-│   │   └── web_data_service.py   # Pollution data
-│   └── main.py              # FastAPI app entry point
-├── tests/
-├── pyproject.toml
-├── .env.example
+│   │   ├── client.py               # Main client interface
+│   │   ├── models.py               # Pydantic models (API contract)
+│   │   └── progress.py             # Progress tracking
+│   ├── services/                   # Stateless services
+│   │   ├── grounding_service.py    # Entity → INDRA ID mapping
+│   │   ├── indra_service.py        # INDRA API wrapper
+│   │   ├── graph_builder.py        # Causal graph construction
+│   │   ├── web_data_service.py     # Pollution/environmental data
+│   │   └── writer_kg_service.py    # Writer KG integration
+│   ├── main.py                     # FastAPI app entry point
+│   └── mcp_server.py               # MCP server for Claude Desktop
+├── aeon_cascade_frontend/                   # Telegram bot interface
+│   ├── bot/
+│   │   ├── bot.py                  # Main bot (imports indra_agent)
+│   │   ├── config.py               # Configuration loader
+│   │   ├── database.py             # MongoDB abstraction
+│   │   └── openai_utils.py         # OpenAI API utilities
+│   ├── config/
+│   │   ├── config.yml              # Bot settings
+│   │   ├── config.env              # Environment variables
+│   │   ├── chat_modes.yml          # Bot personalities
+│   │   └── models.yml              # OpenAI model configs
+│   ├── Dockerfile                  # Docker build (multi-context)
+│   └── docker-compose.yml          # Bot + MongoDB deployment
+├── tests/                          # Test suite
+├── pyproject.toml                  # Python package config
+├── .env.example                    # Environment template
 └── README.md
 ```
 
@@ -367,17 +503,19 @@ Temporal lag is estimated by mechanism type:
 - Transcriptional activation: 6 hours
 - Protein synthesis: 12 hours
 
-## API Contract Compliance
+## API Contract
 
-This system implements the specification from `/Users/tyo/GITHUB/digitalme/agentic-system-spec.md`:
+The system provides a standardized causal graph API with:
 
-✅ Effect sizes ∈ [0, 1]
-✅ Temporal lags ≥ 0
-✅ Node types: environmental, molecular, biomarker, genetic
-✅ Relationship types: activates, inhibits, increases, decreases
-✅ Evidence with PMIDs and confidence
-✅ Genetic modifiers applied
-✅ 3-5 explanations (< 200 chars each)
+✅ **Effect Sizes**: Values ∈ [0, 1] for Monte Carlo simulation compatibility
+✅ **Temporal Lags**: Non-negative hours for causal ordering
+✅ **Node Types**: `environmental` | `molecular` | `biomarker` | `genetic`
+✅ **Relationship Types**: `activates` | `inhibits` | `increases` | `decreases`
+✅ **Evidence**: PMID references, paper counts, confidence scores
+✅ **Genetic Context**: Modifiers with affected nodes and magnitude
+✅ **Explanations**: 3-5 concise insights (<200 chars each)
+
+See API documentation at `/docs` endpoint for full specification.
 
 ## Troubleshooting
 
@@ -408,10 +546,27 @@ Change the port in `.env`:
 APP_PORT=8001
 ```
 
+## Technology Stack
+
+- **LangGraph**: Multi-agent workflow orchestration
+- **AWS Bedrock**: Claude Sonnet 4.5 for entity extraction and synthesis
+- **INDRA Bio-Ontology**: 3.8M+ curated causal statements from literature
+- **FastAPI**: REST API framework
+- **Pydantic**: Data validation and API contracts
+- **Telegram Bot API**: User interface (bot mode)
+- **OpenAI API**: GPT-4 fallback, Whisper, DALL-E (bot mode)
+- **MongoDB**: User profile and health data storage (bot mode)
+- **Docker**: Containerized deployment
+
+## Contributing
+
+This is a research prototype. For production use:
+1. Implement proper authentication and authorization
+2. Add rate limiting and request validation
+3. Set up monitoring and logging infrastructure
+4. Configure backup and disaster recovery for user health data
+5. Ensure HIPAA compliance if handling protected health information
+
 ## License
 
-This project is part of the omics-os monorepo.
-
-## Contact
-
-For questions or issues, see the main omics-os repository.
+MIT License - See LICENSE file for details

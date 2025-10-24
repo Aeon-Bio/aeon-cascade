@@ -1,6 +1,7 @@
 <script lang="ts">
 	import PersonaSelector from '$lib/components/PersonaSelector.svelte';
-	import BiomarkerDashboard from '$lib/components/BiomarkerDashboard.svelte';
+	import GeneticBiomarkers from '$lib/components/GeneticBiomarkers.svelte';
+	import BiomarkerTimeline from '$lib/components/BiomarkerTimeline.svelte';
 	import QueryBuilder from '$lib/components/QueryBuilder.svelte';
 	import CausalGraph from '$lib/components/CausalGraph.svelte';
 	import InterventionPlanner from '$lib/components/InterventionPlanner.svelte';
@@ -142,13 +143,23 @@
 		</section>
 
 		{#if $selectedPersona}
-			<!-- Biomarker Dashboard -->
+			<!-- Genetic Biomarkers -->
 			<section class="mb-8">
 				<h2 class="text-xl font-semibold text-gray-900 mb-4">
-					Biomarker Profile: {$selectedPersona.name}
+					Genetic Profile: {$selectedPersona.name}
 				</h2>
-				<BiomarkerDashboard persona={$selectedPersona} />
+				<GeneticBiomarkers persona={$selectedPersona} />
 			</section>
+
+			<!-- Biomarker Timeline -->
+			{#if $selectedPersona.biomarkerHistory && $selectedPersona.biomarkerHistory.length > 0}
+				<section class="mb-8">
+					<h2 class="text-xl font-semibold text-gray-900 mb-4">
+						Biomarker History & Interventions
+					</h2>
+					<BiomarkerTimeline persona={$selectedPersona} />
+				</section>
+			{/if}
 
 			<!-- Tab Navigation -->
 			<div class="border-b border-gray-200 mb-6">

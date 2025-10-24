@@ -1,64 +1,59 @@
-# Python
-__pycache__/
-*.py[cod]
-*$py.class
-*.so
-.Python
-*.egg-info/
-dist/
-build/
-*.egg
+# Git
+.git
+.gitignore
 
-# Virtual environments
-.venv/
-venv/
-env/
-ENV/
+# Docker
+Dockerfile
+docker-compose.yml
+.dockerignore
+
+# Node
+frontend/node_modules
+frontend/.svelte-kit
+frontend/.vite
+frontend/.env
+frontend/build
+
+# Python
+__pycache__
+*.pyc
+*.pyo
+*.pyd
+.Python
+*.so
+*.egg
+*.egg-info
+dist
+build
+.pytest_cache
+.coverage
+htmlcov
+.tox
+.venv
+venv
 
 # IDE
-.vscode/
-.idea/
+.vscode
+.idea
 *.swp
 *.swo
-*~
-
-# Testing
-.pytest_cache/
-.coverage
-htmlcov/
-.tox/
-
-# Git
-.git/
-.gitignore
-.gitmodules
-
-# Environment
-.env
-.env.local
-.env.*.local
+.DS_Store
 
 # Documentation
 *.md
-!README.md
+docs
 
-# Submodules (already containerized separately)
-aeon-gateway/
+# Archives
+healthos_bot
+aeon-gateway
 
-# CI/CD
-.github/
+# Tests
+tests
+*.test.js
+*.spec.js
 
-# UV lock file (already exported to requirements.txt)
-uv.lock
-
-# Misc
+# Logs
 *.log
-.DS_Store
-activate_claude_code.sh
-cleanup.sh
-
-# Frontend (static files, not needed in backend container)
-frontend/
-
-# Tests (not needed in production container)
-tests/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*

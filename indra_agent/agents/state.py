@@ -4,25 +4,71 @@ This module defines state structures for the multi-agent workflow,
 following the Lobster architecture pattern with agent-specific state schemas.
 """
 
-from typing import Any, Dict, List
+from typing import Annotated, Any, Dict, List, Optional
 
 from langgraph.prebuilt.chat_agent_executor import AgentState
+from indra_agent.core.progress import ProgressEmitter
+
+
+# Lang Graph reducer: last write wins (rightmost value in update sequence)
+def replace_reducer(x: Any, y: Any) -> Any:
+    """LangGraph reducer: keep last non-empty value (allows concurrent updates).
+
+    Args:
+        x: Current/left value
+        y: New/right value (from update)
+
+    Returns:
+        y if y is not None/empty, otherwise x
+
+    This implements "last write wins" semantics while treating None and
+    empty dicts as non-updates to prevent accidental clearing of state.
+    """
+    # If new value (y) is None or empty dict, keep current (x)
+    if y is None or (isinstance(y, dict) and not y):
+        return x
+    # Otherwise, return new value (y) - "last write wins"
+    return y
 
 
 class OverallState(AgentState):
     """Supervisor state for coordinating the causal discovery workflow.
 
-    Following LangGraph 0.2.x pattern, the supervisor maintains minimal
-    routing metadata while individual agents have their own state schemas.
+    This state tracks all data flowing through the multi-agent system,
+    including request context, agent results, and routing information.
     """
 
-    # Meta routing information
-    last_active_agent: str = ""
-    conversation_id: str = ""
+    # Request context (with reducers to handle concurrent agent updates)
+    request_id: Annotated[str, replace_reducer] = ""
+    user_context: Annotated[Dict[str, Any], replace_reducer] = {}
+    query: Annotated[Dict[str, Any], replace_reducer] = {}
+    options: Annotated[Dict[str, Any], replace_reducer] = {}
 
-    # Task context for handoffs
-    current_task: str = ""
-    task_context: Dict[str, Any] = {}
+    # Extracted information (with reducers for concurrent updates)
+    entities: Annotated[List[str], replace_reducer] = []
+    mesh_enriched_entities: Annotated[List[Dict[str, Any]], replace_reducer] = []
+    source_entities: Annotated[List[str], replace_reducer] = []
+    target_entities: Annotated[List[str], replace_reducer] = []
+
+    # Agent results
+    indra_paths: Annotated[List[Dict[str, Any]], replace_reducer] = []
+    environmental_data: Annotated[Dict[str, Any], replace_reducer] = {}
+    causal_graph: Annotated[Dict[str, Any], replace_reducer] = {}
+    explanations: Annotated[List[str], replace_reducer] = []
+
+    # Metadata
+    metadata: Annotated[Dict[str, Any], replace_reducer] = {}
+    predictions: Annotated[Dict[str, Any], replace_reducer] = {}
+
+    # Routing (with reducers for concurrent updates)
+    next_agent: Annotated[str, replace_reducer] = ""
+    current_agent: Annotated[str, replace_reducer] = ""
+
+    # Progress tracking (with reducer to handle concurrent updates)
+    progress_emitter: Annotated[Optional[ProgressEmitter], replace_reducer] = None
+
+    # ReAct agent internal state (from create_react_agent)
+    remaining_steps: int = 10
 
 
 class MeshEnrichmentState(AgentState):
@@ -104,27 +150,27 @@ class LegacyOverallState(AgentState):
     New code should use agent-specific state schemas above.
     """
 
-    # Request context
-    request_id: str = ""
-    user_context: Dict[str, Any] = {}
-    query: Dict[str, Any] = {}
-    options: Dict[str, Any] = {}
+    # Request context (with reducers to handle concurrent agent updates)
+    request_id: Annotated[str, replace_reducer] = ""
+    user_context: Annotated[Dict[str, Any], replace_reducer] = {}
+    query: Annotated[Dict[str, Any], replace_reducer] = {}
+    options: Annotated[Dict[str, Any], replace_reducer] = {}
 
-    # Extracted information
-    entities: List[str] = []
-    mesh_enriched_entities: List[Dict[str, Any]] = []
-    source_entities: List[str] = []
-    target_entities: List[str] = []
+    # Extracted information (with reducers for concurrent updates)
+    entities: Annotated[List[str], replace_reducer] = []
+    mesh_enriched_entities: Annotated[List[Dict[str, Any]], replace_reducer] = []
+    source_entities: Annotated[List[str], replace_reducer] = []
+    target_entities: Annotated[List[str], replace_reducer] = []
 
     # Agent results
-    indra_paths: List[Dict[str, Any]] = []
-    environmental_data: Dict[str, Any] = {}
-    causal_graph: Dict[str, Any] = {}
-    explanations: List[str] = []
+    indra_paths: Annotated[List[Dict[str, Any]], replace_reducer] = []
+    environmental_data: Annotated[Dict[str, Any], replace_reducer] = {}
+    causal_graph: Annotated[Dict[str, Any], replace_reducer] = {}
+    explanations: Annotated[List[str], replace_reducer] = []
 
     # Metadata
-    metadata: Dict[str, Any] = {}
+    metadata: Annotated[Dict[str, Any], replace_reducer] = {}
 
-    # Routing
-    next_agent: str = ""
-    current_agent: str = ""
+    # Routing (with reducers for concurrent updates)
+    next_agent: Annotated[str, replace_reducer] = ""
+    current_agent: Annotated[str, replace_reducer] = ""

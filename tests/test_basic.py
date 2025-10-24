@@ -2,7 +2,8 @@
 
 import pytest
 
-from indra_agent.config.cached_responses import get_cached_path, get_genetic_modifier
+from indra_agent.config.genetic_modifiers import get_genetic_modifier
+from tests.fixtures.cached_indra_paths import get_cached_path
 from indra_agent.core.models import (
     CausalDiscoveryRequest,
     LocationHistory,
@@ -52,11 +53,13 @@ def test_cached_responses():
 
 
 def test_genetic_modifiers():
-    """Test genetic modifier retrieval."""
+    """Test genetic modifier retrieval with literature-derived effect sizes."""
     modifier = get_genetic_modifier("GSTM1_null")
     assert modifier["effect_type"] == "amplifies"
-    assert modifier["magnitude"] == 1.3
+    assert modifier["magnitude"] == 2.34  # OR from PMID:18053222 (meta-analysis)
     assert "oxidative_stress" in modifier["affected_nodes"]
+    assert modifier["pmid"] == "18053222"  # Must have citation
+    assert modifier["confidence"] == "Level 2A"  # PharmGKB confidence level
 
 
 def test_request_model_validation():

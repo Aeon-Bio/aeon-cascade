@@ -8,6 +8,12 @@ import logging
 from typing import Dict, List, Optional
 
 import httpx
+from tenacity import (
+    retry,
+    stop_after_attempt,
+    wait_exponential,
+    retry_if_exception_type,
+)
 
 from indra_agent.config.settings import get_settings
 
@@ -17,12 +23,18 @@ logger = logging.getLogger(__name__)
 class WriterKGService:
     """Service for querying Writer Knowledge Graph with MeSH ontology."""
 
-    def __init__(self, api_key: Optional[str] = None, graph_id: Optional[str] = None):
+    def __init__(
+        self,
+        api_key: Optional[str] = None,
+        graph_id: Optional[str] = None,
+        client: Optional[httpx.AsyncClient] = None
+    ):
         """Initialize Writer KG service.
 
         Args:
             api_key: Writer API key (defaults to settings)
             graph_id: Writer Graph ID for MeSH ontology (defaults to settings)
+            client: Optional shared HTTP client. If not provided, creates a new one.
         """
         settings = get_settings()
         self.api_key = api_key or settings.writer_api_key
@@ -30,16 +42,43 @@ class WriterKGService:
         self.base_url = "https://api.writer.com/v1"
 
         # HTTP client for async requests
-        self.client = httpx.AsyncClient(
-            headers={
-                "Authorization": f"Bearer {self.api_key}",
-                "Content-Type": "application/json",
-            },
-            timeout=30.0,
-        )
+        self._owns_client = client is None  # Track if we own the client
+        if client is not None:
+            self.client = client
+        else:
+            self.client = httpx.AsyncClient(
+                headers={
+                    "Authorization": f"Bearer {self.api_key}",
+                    "Content-Type": "application/json",
+                },
+                timeout=30.0,
+            )
 
         # Cache for MeSH lookups (in-memory for now)
         self._cache: Dict[str, Dict] = {}
+
+    @retry(
+        stop=stop_after_attempt(3),
+        wait=wait_exponential(multiplier=1, min=1, max=10),
+        retry=retry_if_exception_type((httpx.TimeoutException, httpx.NetworkError)),
+        reraise=True,
+    )
+    async def _fetch_with_retry(self, url: str, **kwargs):
+        """Fetch with automatic retry on transient errors.
+
+        Args:
+            url: URL to fetch
+            **kwargs: Additional arguments for the request
+
+        Returns:
+            HTTP response
+
+        Raises:
+            httpx.HTTPError: On non-retryable errors or after max retries
+        """
+        response = await self.client.post(url, **kwargs)
+        response.raise_for_status()
+        return response
 
     async def query_mesh_terms(
         self,
@@ -66,7 +105,8 @@ class WriterKGService:
         logger.info(f"Querying Writer KG: {question}")
 
         try:
-            response = await self.client.post(
+            # Use retry wrapper for reliable network call
+            response = await self._fetch_with_retry(
                 f"{self.base_url}/graphs/question",
                 json={
                     "graph_ids": [self.graph_id],
@@ -78,7 +118,6 @@ class WriterKGService:
                     },
                 },
             )
-            response.raise_for_status()
 
             result = response.json()
 
@@ -138,6 +177,26 @@ class WriterKGService:
         # Fallback to answer for definition
         if not definition:
             definition = answer
+
+        # CRITICAL: If mesh_label is still None, extract from LLM answer
+        # The LLM answer usually contains the label right after mentioning the MESH ID
+        if not mesh_label and mesh_id and answer:
+            # Look for patterns like "D052638 is Particulate Matter" or "The term is Particulate Matter"
+            import re
+            # Pattern 1: "D052638 is/refers to/means <label>"
+            pattern1 = rf'{mesh_id}\s+(?:is|refers to|means|corresponds to)\s+([^,.]+)'
+            match = re.search(pattern1, answer, re.IGNORECASE)
+            if match:
+                mesh_label = match.group(1).strip()
+            else:
+                # Pattern 2: "The term is <label>" or "It is <label>"
+                pattern2 = r'(?:the term|it)\s+is\s+([A-Z][^,.]+)'
+                match = re.search(pattern2, answer)
+                if match:
+                    mesh_label = match.group(1).strip()
+
+            if mesh_label:
+                logger.info(f"Extracted label from LLM answer: {mesh_label}")
 
         return {
             "term": term_name,
@@ -387,8 +446,9 @@ class WriterKGService:
         return "related"
 
     async def cleanup(self):
-        """Clean up HTTP client resources."""
-        await self.client.aclose()
+        """Clean up HTTP client resources if we own it."""
+        if self._owns_client:
+            await self.client.aclose()
 
 
 # Factory function for agent usage

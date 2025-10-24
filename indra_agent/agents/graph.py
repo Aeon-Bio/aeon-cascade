@@ -49,6 +49,7 @@ async def create_causal_discovery_graph():
         agents.append(mesh_agent)
 
     # Always include INDRA query and web researcher agents
+    # INDRA agent now includes built-in state extraction
     indra_agent = await create_indra_query_agent(handoff_tools=handoff_tools)
     web_agent = await create_web_researcher_agent(handoff_tools=handoff_tools)
     agents.extend([indra_agent, web_agent])

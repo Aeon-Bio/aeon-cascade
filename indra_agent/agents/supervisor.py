@@ -93,13 +93,17 @@ class SupervisorAgent:
         """
         # Emit progress: Step 1 - Routing (3%)
         emitter = state.get("progress_emitter")
+        logger.info(f"Supervisor _initial_routing: progress_emitter exists? {emitter is not None}")
         if emitter:
             async with emitter.step(
                 agent="supervisor",
                 action="Routing query to specialized agents",
                 progress_percent=3,
+                phase="initialization",
             ):
                 pass  # Routing logic happens below
+        else:
+            logger.warning("No progress_emitter in state during supervisor routing!")
 
         # Check if this is an intervention query (explicit intent)
         query_intent = state.get("query", {}).get("intent")
@@ -264,6 +268,7 @@ Respond with ONLY the agent name: 'web_researcher' or 'indra_query_agent'"""),
                 agent="supervisor",
                 action="Generating explanations and insights",
                 progress_percent=100,
+                phase="complete",
             ):
                 pass  # Explanation generation happens below
 

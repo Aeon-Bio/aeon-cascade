@@ -1,7 +1,9 @@
 """FastAPI application for INDRA causal discovery service."""
 
 import logging
+from contextlib import asynccontextmanager
 
+import httpx
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
@@ -16,7 +18,25 @@ logging.basicConfig(
 
 logger = logging.getLogger(__name__)
 
-# Create FastAPI app
+# Get settings for CORS configuration
+settings = get_settings()
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """Manage application lifecycle: startup and shutdown."""
+    # Startup: Create shared HTTP client
+    logger.info("Creating shared HTTP client...")
+    app.state.http_client = httpx.AsyncClient(timeout=30.0)
+
+    yield
+
+    # Shutdown: Close HTTP client
+    logger.info("Closing shared HTTP client...")
+    await app.state.http_client.aclose()
+
+
+# Create FastAPI app with lifespan management
 app = FastAPI(
     title="INDRA Causal Discovery API",
     description=(
@@ -25,14 +45,23 @@ app = FastAPI(
         "molecular mechanisms, and clinical biomarkers."
     ),
     version="0.1.0",
+    lifespan=lifespan,
 )
 
-# Add CORS middleware
+# Add CORS middleware with restricted origins from config
+allowed_origins = [
+    origin.strip()
+    for origin in settings.cors_allowed_origins.split(",")
+    if origin.strip()
+]
+
+logger.info(f"CORS allowed origins: {allowed_origins}")
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # Configure appropriately for production
+    allow_origins=allowed_origins,  # Restricted to configured origins only
     allow_credentials=True,
-    allow_methods=["*"],
+    allow_methods=["*"],  # Allow all methods
     allow_headers=["*"],
 )
 

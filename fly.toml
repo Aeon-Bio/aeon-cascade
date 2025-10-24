@@ -1,0 +1,32 @@
+# fly.toml app configuration file generated for aeon-cascade on 2025-10-22T23:52:00-07:00
+#
+# See https://fly.io/docs/reference/configuration/ for information about how to use this file.
+#
+
+app = 'aeon-cascade'
+primary_region = 'iad'
+
+[build]
+  dockerfile = 'Dockerfile.fly'
+
+[env]
+  APP_PORT = '8000'
+  PORT = '3000'
+  PUBLIC_API_URL = 'http://localhost:8000'
+  CORS_ALLOWED_ORIGINS = 'https://aeon-cascade.fly.dev,http://localhost:5173,http://localhost:5174,http://localhost:3000'
+
+[http_service]
+  internal_port = 3000
+  force_https = true
+  auto_stop_machines = 'stop'
+  auto_start_machines = true
+  min_machines_running = 0
+  processes = ['app']
+
+# Backend API (port 8000) is accessible internally via localhost
+# Frontend (port 3000) proxies API calls to http://localhost:8000
+
+[[vm]]
+  cpu_kind = 'shared'
+  cpus = 1
+  memory_mb = 1024

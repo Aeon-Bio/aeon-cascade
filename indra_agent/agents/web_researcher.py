@@ -47,19 +47,17 @@ def create_web_researcher_tools():
             for loc in locations[:5]:  # Limit to 5 locations
                 logger.info(f"Fetching pollution data for: {loc}")
 
-                data = await web_service.get_air_quality(
-                    city=loc.get("city"),
-                    state=loc.get("state"),
-                    country=loc.get("country")
+                # WebDataService.get_pollution_data only accepts city parameter
+                data = await web_service.get_pollution_data(
+                    city=loc.get("city")
                 )
 
                 if data:
                     all_data.append({
                         "location": loc,
-                        "aqi": data.get("aqi"),
                         "pm25": data.get("pm25"),
-                        "ozone": data.get("ozone"),
-                        "timestamp": data.get("timestamp")
+                        "source": data.get("source"),
+                        "timestamp": data.get("timestamp", "")
                     })
 
             return json.dumps({
@@ -105,17 +103,33 @@ def create_web_researcher_tools():
                 prev = pollution_data[i]
                 curr = pollution_data[i + 1]
 
+                # Calculate PM2.5 change and fold change for environmental multipliers
+                pm25_prev = prev.get("pm25")
+                pm25_curr = curr.get("pm25")
+
+                pm25_change = None
+                pm25_fold = None
+                if pm25_prev is not None and pm25_curr is not None:
+                    pm25_change = pm25_curr - pm25_prev
+                    pm25_fold = pm25_curr / pm25_prev if pm25_prev > 0 else 1.0
+
                 delta = {
                     "from_location": prev["location"],
                     "to_location": curr["location"],
-                    "pm25_change": curr["pm25"] - prev["pm25"] if curr.get("pm25") and prev.get("pm25") else None,
-                    "aqi_change": curr["aqi"] - prev["aqi"] if curr.get("aqi") and prev.get("aqi") else None,
+                    "pm25_change": pm25_change,
+                    "pm25_fold": pm25_fold,
                 }
                 deltas.append(delta)
+
+            # Calculate pollutant multipliers for temporal model (use last delta)
+            pollutant_multipliers = {}
+            if deltas and deltas[-1]["pm25_fold"] is not None:
+                pollutant_multipliers["PM2.5"] = deltas[-1]["pm25_fold"]
 
             return json.dumps({
                 "status": "success",
                 "exposure_deltas": deltas,
+                "pollutant_multipliers": pollutant_multipliers,
                 "count": len(deltas)
             })
 

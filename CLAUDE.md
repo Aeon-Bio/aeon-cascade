@@ -4,12 +4,50 @@ You are the worlds best hackathon winner.
 
 ## Project Overview
 
-**healthOS** is a multi-factor, all-in-one health assistant accessible via Telegram that combines conversational AI with evidence-based health intelligence powered by INDRA bio-ontology.
+**Aeon Cascade** is a multi-factor, all-in-one health assistant that uses **systems medicine** to discover synergistic interventions across multiple conditions, powered by INDRA bio-ontology and structural causal models.
+
+### Clinical Use Case: Sarah Chen (Metabolic-Inflammatory Syndrome)
+
+**Patient Profile**:
+- **Age**: 34, Software Engineer, Los Angeles
+- **Primary**: Chronic inflammation (CRP: 5.2 mg/L, IL-6: 3.8 pg/mL)
+- **Emerging**: Prediabetes (HbA1c: 5.9%, fasting glucose: 110 mg/dL)
+- **Environmental**: High PM2.5 exposure (LA: 35 µg/m³ vs WHO limit: 15)
+
+**Clinical Challenge**: Sarah has TWO interconnected conditions—not independent diseases but a unified **metabolic-inflammatory syndrome** with shared molecular mechanisms:
+
+```
+PM2.5 → Oxidative Stress (ROS) → {
+    ├─→ NF-κB → IL-6 → CRP (Inflammation)
+    └─→ JNK → IRS-1 inhibition → Insulin Resistance (Prediabetes)
+}
+```
+
+**Traditional Approach** (siloed):
+- Treat inflammation separately
+- Treat prediabetes separately
+- Miss synergistic opportunities
+
+**Systems Medicine Approach** (our system):
+- Single intervention (reduce PM2.5) → **Simultaneous** benefits:
+  - ↓ Oxidative stress → ↓ Inflammation AND ↓ Insulin resistance
+  - Breaks inflammation-insulin resistance feedback loop
+  - **Synergy**: 1+1=3 effect from cross-pathway benefits
+
+**Query**: "If Sarah moves from LA to Seattle (PM2.5: 10 µg/m³), how will both her inflammation AND metabolic markers respond?"
+
+**System Output**:
+- CRP: 5.2 → 4.36 mg/L (-16%, enters low-risk range)
+- HbA1c: 5.9% → 4.77% (-19%, exits prediabetes)
+- **Synergy Score**: 1.34 (34% super-additive benefit from cross-pathway effects)
+- **Critical Pathway**: PM2.5 → ROS → NF-κB (breaks feedback loop)
+
+**Clinical Impact**: One environmental intervention reverses **two** chronic conditions by targeting shared upstream mechanisms.
 
 ### Architecture
 
 ```
-User → Telegram → healthos_bot (bot.py)
+User → Telegram → aeon_cascade_frontend (bot.py)
                        ↓
                 [Health Query Detection]
                        ↓
@@ -38,8 +76,8 @@ User → Telegram → healthos_bot (bot.py)
 
 ## System Components
 
-### 1. healthos_bot (Telegram Interface)
-**Location**: `/healthos_bot/`
+### 1. aeon_cascade_frontend (Telegram Interface)
+**Location**: `/aeon_cascade_frontend/`
 **Status**: ✅ Production-ready with INDRA integration
 
 **Capabilities**:
@@ -62,7 +100,7 @@ User → Telegram → healthos_bot (bot.py)
 
 ### 2. indra_agent (Health Intelligence Backend)
 **Location**: `/indra_agent/`
-**Status**: ✅ Integrated into healthos_bot via direct Python imports
+**Status**: ✅ Integrated into aeon_cascade_frontend via direct Python imports
 
 **Capabilities**:
 - LangGraph multi-agent system (Supervisor, INDRA Query Agent, Web Researcher)
@@ -80,7 +118,7 @@ User → Telegram → healthos_bot (bot.py)
 - INDRA bio-ontology API
 - Pydantic for data validation
 
-**Deployment Mode**: Python modules imported directly into healthos_bot/bot.py (NO HTTP API)
+**Deployment Mode**: Python modules imported directly into aeon_cascade_frontend/bot.py (NO HTTP API)
 
 ## Integration Architecture
 
@@ -89,7 +127,7 @@ User → Telegram → healthos_bot (bot.py)
 The integration uses **direct Python imports** for performance and simplicity:
 
 ```python
-# healthos_bot/bot/bot.py
+# aeon_cascade_frontend/bot/bot.py
 
 from indra_agent.core.client import INDRAAgentClient
 from indra_agent.core.models import (
@@ -168,7 +206,7 @@ async def message_handle_fn():
 
 ### 1. Configure Credentials
 
-Edit `healthos_bot/config/config.env`:
+Edit `aeon_cascade_frontend/config/config.env`:
 
 ```bash
 # Telegram & OpenAI
@@ -188,7 +226,7 @@ INDRA_BASE_URL=https://db.indra.bio
 IQAIR_API_KEY=your-iqair-api-key-optional
 ```
 
-Edit `healthos_bot/config/config.yml`:
+Edit `aeon_cascade_frontend/config/config.yml`:
 
 ```yaml
 telegram_token: ${TELEGRAM_TOKEN}
@@ -199,15 +237,15 @@ allowed_telegram_usernames: []  # Empty = allow all users
 ### 2. Production Deployment (Docker - Recommended)
 
 ```bash
-cd healthos_bot/
+cd aeon_cascade_frontend/
 
 # Build and run all services
 docker-compose --env-file config/config.env up --build
 ```
 
 **What happens:**
-1. Docker builds from parent directory context to access both healthos_bot/ and indra_agent/
-2. Installs healthos_bot dependencies (requirements.txt)
+1. Docker builds from parent directory context to access both aeon_cascade_frontend/ and indra_agent/
+2. Installs aeon_cascade_frontend dependencies (requirements.txt)
 3. Installs indra_agent dependencies (pyproject.toml)
 4. Copies indra_agent to `/opt/indra_agent` for editable install
 5. Runs bot.py which imports indra_agent modules
@@ -223,7 +261,7 @@ docker-compose --env-file config/config.env up --build
 ```bash
 # Install both projects
 pip install -e .
-cd healthos_bot/
+cd aeon_cascade_frontend/
 pip install -r requirements.txt
 
 # Run bot directly
@@ -237,20 +275,20 @@ python3 bot/bot.py
 The Docker setup uses **parent directory context** to access both projects:
 
 ```yaml
-# healthos_bot/docker-compose.yml
+# aeon_cascade_frontend/docker-compose.yml
 services:
   chatgpt_telegram_bot:
     build:
       context: ".."                      # Parent directory (digitalme/)
-      dockerfile: healthos_bot/Dockerfile
+      dockerfile: aeon_cascade_frontend/Dockerfile
 ```
 
 ```dockerfile
-# healthos_bot/Dockerfile
+# aeon_cascade_frontend/Dockerfile
 FROM cgr.dev/chainguard-private/python:3.11-dev
 
-# Install healthos_bot dependencies
-COPY healthos_bot/requirements.txt /tmp/requirements.txt
+# Install aeon_cascade_frontend dependencies
+COPY aeon_cascade_frontend/requirements.txt /tmp/requirements.txt
 RUN pip3 install -r /tmp/requirements.txt
 
 # Copy and install indra_agent (permanent location for editable install)
@@ -258,8 +296,8 @@ COPY indra_agent /opt/indra_agent
 COPY pyproject.toml /opt/pyproject.toml
 RUN cd /opt && pip3 install -e .
 
-# Copy healthos_bot code
-COPY healthos_bot /code
+# Copy aeon_cascade_frontend code
+COPY aeon_cascade_frontend /code
 WORKDIR /code
 
 CMD ["bash"]
@@ -320,7 +358,7 @@ CMD ["bash"]
 
 ## Configuration Files
 
-### healthos_bot Configuration
+### aeon_cascade_frontend Configuration
 
 - **config/config.yml**: Main bot settings (tokens, allowed users, features)
 - **config/config.env**: Environment variables (AWS credentials, MongoDB, etc.)
@@ -331,7 +369,7 @@ CMD ["bash"]
 
 - **indra_agent/config/agent_config.py**: Agent prompts and system instructions
 - **indra_agent/config/cached_responses.py**: Pre-cached INDRA paths for reliability
-- AWS credentials in `healthos_bot/config/config.env` (shared)
+- AWS credentials in `aeon_cascade_frontend/config/config.env` (shared)
 
 ## User Health Data Management
 
@@ -367,7 +405,7 @@ This context is automatically included in INDRA queries for personalized health 
 
 ### Integration Points
 
-**File**: `healthos_bot/bot/bot.py`
+**File**: `aeon_cascade_frontend/bot/bot.py`
 
 **Lines 37-51**: Import INDRA modules
 ```python
@@ -439,7 +477,7 @@ digitalme/
 │   └── config/
 │       ├── agent_config.py         # Agent prompts
 │       └── cached_responses.py     # Pre-cached paths
-└── healthos_bot/                   # Telegram bot
+└── aeon_cascade_frontend/                   # Telegram bot
     ├── bot/
     │   ├── bot.py                  # Main bot (imports indra_agent)
     │   ├── config.py               # Configuration loader
@@ -468,7 +506,7 @@ docker exec chatgpt_telegram_bot ls /opt/indra_agent
 
 **Fix**: Rebuild with correct build context:
 ```bash
-cd healthos_bot/
+cd aeon_cascade_frontend/
 docker-compose down
 docker-compose --env-file config/config.env up --build
 ```
@@ -477,7 +515,7 @@ docker-compose --env-file config/config.env up --build
 
 **Cause**: Missing or invalid AWS credentials
 
-**Fix**: Add correct credentials to `healthos_bot/config/config.env`:
+**Fix**: Add correct credentials to `aeon_cascade_frontend/config/config.env`:
 ```bash
 AWS_ACCESS_KEY_ID=your-real-key
 AWS_SECRET_ACCESS_KEY=your-real-secret
@@ -533,7 +571,7 @@ Calling INDRA agent for user 12345
 
 ```bash
 # Start bot
-cd healthos_bot/
+cd aeon_cascade_frontend/
 docker-compose --env-file config/config.env up
 
 # Send test message to bot via Telegram

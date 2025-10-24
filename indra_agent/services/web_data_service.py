@@ -8,6 +8,12 @@ import logging
 from typing import Any, Dict, Optional
 
 import httpx
+from tenacity import (
+    retry,
+    stop_after_attempt,
+    wait_exponential,
+    retry_if_exception_type,
+)
 
 from indra_agent.config.settings import get_settings
 
@@ -36,14 +42,43 @@ class WebDataService:
         "Boston": 11.8,
     }
 
-    def __init__(self):
-        """Initialize web data service."""
+    def __init__(self, client: Optional[httpx.AsyncClient] = None):
+        """Initialize web data service.
+
+        Args:
+            client: Optional shared HTTP client. If not provided, creates a new one.
+        """
         self.settings = get_settings()
-        self.client = httpx.AsyncClient(timeout=10.0)
+        self._owns_client = client is None  # Track if we own the client
+        self.client = client if client is not None else httpx.AsyncClient(timeout=10.0)
 
     async def close(self):
-        """Close HTTP client."""
-        await self.client.aclose()
+        """Close HTTP client if we own it."""
+        if self._owns_client:
+            await self.client.aclose()
+
+    @retry(
+        stop=stop_after_attempt(3),
+        wait=wait_exponential(multiplier=1, min=1, max=10),
+        retry=retry_if_exception_type((httpx.TimeoutException, httpx.NetworkError)),
+        reraise=True,
+    )
+    async def _fetch_with_retry(self, url: str, **kwargs):
+        """Fetch with automatic retry on transient errors.
+
+        Args:
+            url: URL to fetch
+            **kwargs: Additional arguments for the request
+
+        Returns:
+            HTTP response
+
+        Raises:
+            httpx.HTTPError: On non-retryable errors or after max retries
+        """
+        response = await self.client.get(url, **kwargs)
+        response.raise_for_status()
+        return response
 
     async def get_pollution_data(self, city: str) -> Dict[str, Any]:
         """Get current pollution data for a city.
@@ -84,8 +119,8 @@ class WebDataService:
                 "key": self.settings.iqair_api_key,
             }
 
-            response = await self.client.get(url, params=params)
-            response.raise_for_status()
+            # Use retry wrapper for reliable network call
+            response = await self._fetch_with_retry(url, params=params)
 
             data = response.json()
             pollution = data.get("data", {}).get("current", {}).get("pollution", {})

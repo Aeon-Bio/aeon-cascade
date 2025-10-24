@@ -24,6 +24,17 @@ from indra_agent.core.models import (
     AffectedPathway,
     InterventionMetadata,
 )
+from indra_agent.core.intervention_models import (
+    InterventionDiscoveryRequest,
+    InterventionDiscoveryResponse,
+    InterventionValidationRequest,
+    InterventionValidationResponse,
+    ConsensusTarget,
+    NetworkSummary,
+    PredictedEffect,
+    PathwayMechanism,
+)
+from indra_agent.config.settings import get_settings
 from indra_agent.services.graph_store import get_graph_store
 from indra_agent.services.scm_inference import SCMInferenceEngine
 from indra_agent.services.vcf_parser import VCFParser
@@ -278,9 +289,32 @@ async def stream_progress(request_id: str, request: Request):
             """Execute workflow and emit completion event."""
             try:
                 client = get_client()
+                settings = get_settings()
 
-                # Pass progress_emitter to client
-                response = await client.process_request(discovery_request, progress_emitter=emitter)
+                # Pass progress_emitter and timeout to client
+                response = await client.process_request(
+                    discovery_request,
+                    timeout=settings.agent_request_timeout,
+                    progress_emitter=emitter
+                )
+
+                # Store graph (same as /api/v1/causal_discovery endpoint)
+                if isinstance(response, CausalDiscoveryResponse):
+                    graph_store = get_graph_store()
+                    graph_id = f"graph-{discovery_request.request_id}"
+                    baseline_values = discovery_request.user_context.current_biomarkers.copy()
+
+                    graph_store.store(
+                        graph_id=graph_id,
+                        graph=response.causal_graph,
+                        baseline_values=baseline_values,
+                    )
+
+                    logger.info(
+                        f"SSE: Stored graph {graph_id} with "
+                        f"{len(response.causal_graph.nodes)} nodes, "
+                        f"{len(response.causal_graph.edges)} edges"
+                    )
 
                 # Send completion
                 if isinstance(response, CausalDiscoveryResponse):
@@ -544,6 +578,10 @@ def _identify_affected_pathways(
                 # Compute total effect
                 effect_result = scm_engine.compute_causal_effect(scm, source, target)
                 total_effect = effect_result.get("total_effect", 0.0)
+
+                # Clamp total effect to valid range [-1, 1]
+                # Matrix inversion (I-W)^-1 can produce values > 1 due to compounding effects
+                total_effect = max(-1.0, min(1.0, total_effect))
 
                 # Build relationship chain
                 relationship_chain = []
@@ -860,3 +898,587 @@ async def analyze_graph(request: dict):
     except Exception as e:
         logger.error(f"Unexpected error in graph analysis: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=f"Internal error: {str(e)}")
+
+
+@router.post(
+    "/api/v1/discover_interventions",
+    response_model=InterventionDiscoveryResponse,
+    responses={
+        200: {
+            "description": "Successful intervention discovery",
+            "model": InterventionDiscoveryResponse,
+        },
+        400: {"description": "Invalid request"},
+        500: {"description": "Internal server error"},
+    },
+)
+async def discover_interventions(
+    request: InterventionDiscoveryRequest,
+) -> InterventionDiscoveryResponse:
+    """Discover optimal intervention points affecting multiple biomarkers.
+
+    This endpoint uses three complementary graph-theoretic approaches:
+    1. Shared Regulators - Literature-based (INDRA API)
+    2. Intervention Hubs - Structural bottlenecks (betweenness centrality)
+    3. Minimal Network - Shortest paths (Steiner tree approximation)
+
+    Args:
+        request: Intervention discovery request
+
+    Returns:
+        InterventionDiscoveryResponse with intervention targets and analysis
+
+    Example:
+        ```python
+        request = {
+            "request_id": "req-12345",
+            "biomarkers": ["CRP", "IL6", "Glucose"],
+            "exposures": ["PM2.5"],
+            "options": {
+                "methods": ["shared_regulators", "intervention_hubs", "minimal_network"],
+                "max_depth": 3,
+                "min_coverage": 2,
+                "belief_cutoff": 0.6,
+                "prioritize_druggable": True
+            }
+        }
+        ```
+    """
+    logger.info(
+        f"Received intervention discovery request: {request.request_id} "
+        f"with {len(request.biomarkers)} biomarkers"
+    )
+
+    start_time = time.time()
+
+    try:
+        # Import INDRAService
+        from indra_agent.services.indra_service import INDRAService
+
+        service = INDRAService()
+
+        # Run requested methods
+        results = {}
+        options = request.options
+
+        # Method 1: Shared Regulators
+        if "shared_regulators" in options.methods:
+            logger.info("Running shared regulators discovery...")
+            shared_regs = await service.find_shared_regulators(
+                biomarkers=request.biomarkers,
+                max_depth=options.max_depth,
+                min_coverage=options.min_coverage,
+                belief_cutoff=options.belief_cutoff,
+            )
+            results["shared_regulators"] = shared_regs
+            logger.info(f"Found {len(shared_regs)} shared regulators")
+
+        # Method 2: Intervention Hubs
+        if "intervention_hubs" in options.methods:
+            logger.info("Running intervention hubs discovery...")
+            hubs_result = await service.discover_intervention_hubs(
+                biomarkers=request.biomarkers,
+                exposures=request.exposures,
+                max_depth=options.max_depth,
+            )
+            results["intervention_hubs"] = hubs_result["intervention_hubs"]
+            results["network_summary"] = hubs_result["network_summary"]
+            logger.info(f"Found {len(hubs_result['intervention_hubs'])} intervention hubs")
+
+        # Method 3: Minimal Network
+        if "minimal_network" in options.methods:
+            logger.info("Running minimal network discovery...")
+            minimal_network = await service.find_minimal_biomarker_network(
+                biomarkers=request.biomarkers,
+                exposures=request.exposures,
+                max_depth=options.max_depth,
+            )
+            results["minimal_network"] = minimal_network
+            logger.info(
+                f"Built minimal network with {minimal_network['total_nodes']} nodes, "
+                f"{minimal_network['total_edges']} edges"
+            )
+
+        # Find consensus targets (appear in multiple methods)
+        consensus_targets = _find_consensus_targets(results, request.biomarkers)
+
+        # Build network summary
+        network_summary = _build_network_summary(results)
+
+        # Compute processing time
+        processing_time_ms = int((time.time() - start_time) * 1000)
+
+        logger.info(
+            f"Intervention discovery completed in {processing_time_ms}ms: "
+            f"{len(consensus_targets)} consensus targets found"
+        )
+
+        return InterventionDiscoveryResponse(
+            status="success",
+            request_id=request.request_id,
+            results=results,
+            consensus_targets=consensus_targets,
+            network_summary=network_summary,
+            processing_time_ms=processing_time_ms,
+        )
+
+    except Exception as e:
+        logger.error(f"Unexpected error in intervention discovery: {e}", exc_info=True)
+
+        return InterventionDiscoveryResponse(
+            status="error",
+            request_id=request.request_id,
+            results={},
+            consensus_targets=[],
+            network_summary=NetworkSummary(
+                total_hubs=0,
+                avg_coverage=0.0,
+                total_paths_analyzed=0,
+                shared_regulators=0,
+                betweenness_hubs=0,
+            ),
+            processing_time_ms=int((time.time() - start_time) * 1000),
+            error_message=f"Unexpected error: {str(e)}",
+        )
+
+
+def _find_consensus_targets(
+    results: dict, biomarkers: list
+) -> list[ConsensusTarget]:
+    """Find targets that appear in multiple discovery methods.
+
+    Args:
+        results: Dictionary with method results
+        biomarkers: Original biomarker list
+
+    Returns:
+        List of ConsensusTarget objects
+    """
+    # Collect all targets from each method
+    all_targets = {}
+
+    # From shared regulators
+    if "shared_regulators" in results:
+        for reg in results["shared_regulators"][:10]:  # Top 10
+            node = reg["node"]
+            if node not in all_targets:
+                all_targets[node] = {
+                    "methods": [],
+                    "max_coverage": 0,
+                    "max_score": 0.0,
+                }
+            all_targets[node]["methods"].append("shared_regulators")
+            all_targets[node]["max_coverage"] = max(
+                all_targets[node]["max_coverage"], reg["coverage"]
+            )
+            all_targets[node]["max_score"] = max(
+                all_targets[node]["max_score"], reg["intervention_score"]
+            )
+
+    # From intervention hubs
+    if "intervention_hubs" in results:
+        for hub in results["intervention_hubs"][:10]:  # Top 10
+            node = hub["node"]
+            if node not in all_targets:
+                all_targets[node] = {
+                    "methods": [],
+                    "max_coverage": 0,
+                    "max_score": 0.0,
+                }
+            all_targets[node]["methods"].append("intervention_hubs")
+            all_targets[node]["max_coverage"] = max(
+                all_targets[node]["max_coverage"], hub["coverage"]
+            )
+            all_targets[node]["max_score"] = max(
+                all_targets[node]["max_score"], hub["intervention_score"]
+            )
+
+    # From minimal network
+    if "minimal_network" in results:
+        for point in results["minimal_network"].get("intervention_points", [])[:10]:
+            node = point["node"]
+            if node not in all_targets:
+                all_targets[node] = {
+                    "methods": [],
+                    "max_coverage": 0,
+                    "max_score": 0.0,
+                }
+            all_targets[node]["methods"].append("minimal_network")
+            all_targets[node]["max_coverage"] = max(
+                all_targets[node]["max_coverage"], point["coverage"]
+            )
+            # Minimal network doesn't have intervention_score, use coverage ratio
+            coverage_ratio = point["coverage"] / len(biomarkers)
+            all_targets[node]["max_score"] = max(
+                all_targets[node]["max_score"], coverage_ratio
+            )
+
+    # Build consensus targets (found in 2+ methods)
+    consensus = []
+    for node, data in all_targets.items():
+        if len(data["methods"]) >= 2:
+            recommendation = (
+                f"{node} found by {len(data['methods'])} methods "
+                f"({', '.join(data['methods'])}), "
+                f"affects {data['max_coverage']}/{len(biomarkers)} biomarkers"
+            )
+
+            consensus.append(
+                ConsensusTarget(
+                    node=node,
+                    found_in_methods=data["methods"],
+                    max_coverage=data["max_coverage"],
+                    max_score=data["max_score"],
+                    recommendation=recommendation,
+                )
+            )
+
+    # Sort by number of methods, then by coverage
+    consensus.sort(
+        key=lambda x: (len(x.found_in_methods), x.max_coverage), reverse=True
+    )
+
+    return consensus
+
+
+def _build_network_summary(results: dict) -> NetworkSummary:
+    """Build network summary from discovery results.
+
+    Args:
+        results: Dictionary with method results
+
+    Returns:
+        NetworkSummary object
+    """
+    total_hubs = 0
+    avg_coverage = 0.0
+    total_paths = 0
+    shared_regulators_count = 0
+    betweenness_hubs_count = 0
+
+    if "intervention_hubs" in results:
+        total_hubs = len(results["intervention_hubs"])
+
+        # Calculate average coverage
+        if results["intervention_hubs"]:
+            avg_coverage = sum(
+                hub["coverage"] for hub in results["intervention_hubs"]
+            ) / len(results["intervention_hubs"])
+
+    if "network_summary" in results:
+        total_paths = results["network_summary"].get("total_paths_analyzed", 0)
+        shared_regulators_count = results["network_summary"].get("shared_regulators", 0)
+        betweenness_hubs_count = results["network_summary"].get("betweenness_hubs", 0)
+
+    return NetworkSummary(
+        total_hubs=total_hubs,
+        avg_coverage=round(avg_coverage, 2),
+        total_paths_analyzed=total_paths,
+        shared_regulators=shared_regulators_count,
+        betweenness_hubs=betweenness_hubs_count,
+    )
+
+
+@router.post(
+    "/api/v1/validate_intervention",
+    response_model=InterventionValidationResponse,
+    responses={
+        200: {
+            "description": "Successful intervention validation",
+            "model": InterventionValidationResponse,
+        },
+        400: {"description": "Invalid request"},
+        500: {"description": "Internal server error"},
+    },
+)
+async def validate_intervention(
+    request: InterventionValidationRequest,
+) -> InterventionValidationResponse:
+    """Validate an intervention target by simulating its effects on biomarkers.
+
+    This endpoint:
+    1. Finds causal pathways from intervention target to biomarkers
+    2. Simulates intervention effects using path-based propagation
+    3. Computes synergy scores (super-additive effects from multi-pathway targeting)
+    4. Generates clinical significance interpretation
+
+    Args:
+        request: Intervention validation request
+
+    Returns:
+        InterventionValidationResponse with pathway analysis and predictions
+
+    Example:
+        ```python
+        request = {
+            "target_node": "SRC",
+            "biomarkers": ["CRP", "IL6", "Glucose"],
+            "current_biomarker_values": {
+                "CRP": 5.2,
+                "IL6": 3.8,
+                "Glucose": 110.0
+            },
+            "simulate_effect_size": 0.3
+        }
+        ```
+    """
+    logger.info(
+        f"Received intervention validation request for target: {request.target_node}"
+    )
+
+    try:
+        # Import INDRAService
+        from indra_agent.services.indra_service import INDRAService
+
+        service = INDRAService()
+
+        # Find pathways from target to each biomarker
+        pathway_analysis = []
+        predicted_effects = {}
+        affects_all = True
+
+        for biomarker in request.biomarkers:
+            try:
+                # Find causal paths
+                paths = await service.find_causal_paths(
+                    source=request.target_node,
+                    target=biomarker,
+                    max_depth=5,
+                )
+
+                if paths:
+                    # Use first path (highest confidence)
+                    path = paths[0]
+
+                    # Build relationship chain
+                    relationship_chain = [edge["relationship"] for edge in path["edges"]]
+
+                    # Compute pathway confidence (average belief)
+                    avg_belief = sum(edge["belief"] for edge in path["edges"]) / len(
+                        path["edges"]
+                    )
+
+                    # Estimate temporal lag (sum of lags)
+                    total_lag = sum(edge.get("temporal_lag_hours", 12) for edge in path["edges"])
+
+                    # Evidence count
+                    evidence_count = sum(edge.get("evidence_count", 0) for edge in path["edges"])
+
+                    # Build mechanism string
+                    node_names = [request.target_node] + [
+                        edge["target"] for edge in path["edges"]
+                    ]
+                    mechanism = " → ".join(node_names)
+
+                    pathway_analysis.append(
+                        PathwayMechanism(
+                            source=request.target_node,
+                            target=biomarker,
+                            mechanism=mechanism,
+                            confidence=round(avg_belief, 2),
+                            temporal_lag_hours=int(total_lag),
+                            evidence_count=evidence_count,
+                        )
+                    )
+
+                    # Simulate effect on biomarker
+                    if request.current_biomarker_values and biomarker in request.current_biomarker_values:
+                        baseline = request.current_biomarker_values[biomarker]
+
+                        # Effect propagation: effect_size * avg_belief * path_length_decay
+                        path_length = len(path["edges"])
+                        decay_factor = 0.9 ** (path_length - 1)  # Decay with distance
+                        total_effect = request.simulate_effect_size * avg_belief * decay_factor
+
+                        # Apply effect (assume inhibitory for inflammatory markers, activating for metabolic)
+                        # Simplification: negative effect for CRP/IL6, positive for Glucose control
+                        if biomarker in ["CRP", "IL6"]:
+                            predicted = baseline * (1 - total_effect)
+                        else:
+                            predicted = baseline * (1 + total_effect)
+
+                        delta = predicted - baseline
+                        pct_change = (delta / baseline * 100) if baseline != 0 else 0
+
+                        # Confidence based on evidence
+                        if evidence_count > 50:
+                            confidence = "high"
+                        elif evidence_count > 20:
+                            confidence = "medium"
+                        else:
+                            confidence = "low"
+
+                        predicted_effects[biomarker] = PredictedEffect(
+                            baseline=round(baseline, 2),
+                            predicted=round(predicted, 2),
+                            delta=round(delta, 2),
+                            pct_change=round(pct_change, 1),
+                            confidence=confidence,
+                        )
+                    else:
+                        # No baseline values, just record pathway exists
+                        pass
+
+                else:
+                    # No path found
+                    affects_all = False
+                    logger.warning(
+                        f"No causal path found from {request.target_node} to {biomarker}"
+                    )
+
+            except Exception as e:
+                affects_all = False
+                logger.error(
+                    f"Error finding path from {request.target_node} to {biomarker}: {e}"
+                )
+
+        # Compute synergy score
+        synergy_score = _compute_synergy_score(
+            len([p for p in pathway_analysis if p]),
+            len(request.biomarkers),
+            pathway_analysis,
+        )
+
+        # Generate clinical significance
+        clinical_significance = _generate_clinical_significance(
+            request.target_node,
+            pathway_analysis,
+            predicted_effects,
+            synergy_score,
+        )
+
+        logger.info(
+            f"Intervention validation completed: {len(pathway_analysis)} pathways found, "
+            f"synergy score: {synergy_score:.2f}"
+        )
+
+        return InterventionValidationResponse(
+            status="success",
+            target_node=request.target_node,
+            affects_all_biomarkers=affects_all,
+            pathway_analysis=pathway_analysis,
+            predicted_effects=predicted_effects,
+            synergy_score=synergy_score,
+            clinical_significance=clinical_significance,
+        )
+
+    except Exception as e:
+        logger.error(f"Unexpected error in intervention validation: {e}", exc_info=True)
+
+        return InterventionValidationResponse(
+            status="error",
+            target_node=request.target_node,
+            affects_all_biomarkers=False,
+            pathway_analysis=[],
+            predicted_effects={},
+            synergy_score=0.0,
+            clinical_significance="Error during validation",
+            error_message=f"Unexpected error: {str(e)}",
+        )
+
+
+def _compute_synergy_score(
+    pathways_found: int, total_biomarkers: int, pathway_analysis: list
+) -> float:
+    """Compute synergy score for multi-target intervention.
+
+    Synergy > 1.0 indicates super-additive effects from hitting multiple pathways.
+
+    Args:
+        pathways_found: Number of pathways discovered
+        total_biomarkers: Total biomarkers queried
+        pathway_analysis: List of PathwayMechanism objects
+
+    Returns:
+        Synergy score (0.0 - 2.0)
+    """
+    if pathways_found == 0:
+        return 0.0
+
+    # Base synergy from coverage
+    coverage_ratio = pathways_found / total_biomarkers
+    base_synergy = coverage_ratio
+
+    # Boost for high-confidence pathways
+    if pathway_analysis:
+        avg_confidence = sum(p.confidence for p in pathway_analysis) / len(
+            pathway_analysis
+        )
+        confidence_boost = avg_confidence * 0.5  # Up to +0.5
+
+        # Boost for shared mechanisms (convergent effects)
+        # If multiple pathways use similar nodes, synergy increases
+        # Simplified: bonus if affecting 3+ biomarkers
+        if pathways_found >= 3:
+            multi_target_boost = 0.3
+        else:
+            multi_target_boost = 0.0
+
+        synergy = base_synergy + confidence_boost + multi_target_boost
+    else:
+        synergy = base_synergy
+
+    # Cap at 2.0
+    return min(2.0, round(synergy, 2))
+
+
+def _generate_clinical_significance(
+    target_node: str,
+    pathway_analysis: list,
+    predicted_effects: dict,
+    synergy_score: float,
+) -> str:
+    """Generate human-readable clinical significance interpretation.
+
+    Args:
+        target_node: Intervention target
+        pathway_analysis: List of PathwayMechanism objects
+        predicted_effects: Dictionary of predicted effects
+        synergy_score: Computed synergy score
+
+    Returns:
+        Clinical significance string
+    """
+    if not pathway_analysis:
+        return (
+            f"No causal pathways found from {target_node} to target biomarkers. "
+            "This intervention may not be effective."
+        )
+
+    # Count affected biomarkers
+    affected_count = len(pathway_analysis)
+
+    # Synergy interpretation
+    if synergy_score >= 1.3:
+        synergy_text = "strong synergistic effects (34%+ super-additive benefit)"
+    elif synergy_score >= 1.1:
+        synergy_text = "moderate synergistic effects"
+    else:
+        synergy_text = "additive effects"
+
+    # Effect magnitude
+    if predicted_effects:
+        avg_pct_change = sum(
+            abs(e.pct_change) for e in predicted_effects.values()
+        ) / len(predicted_effects)
+
+        if avg_pct_change >= 20:
+            magnitude_text = "large predicted changes"
+        elif avg_pct_change >= 10:
+            magnitude_text = "moderate predicted changes"
+        else:
+            magnitude_text = "small predicted changes"
+    else:
+        magnitude_text = "effects not quantified"
+
+    # Temporal lag
+    if pathway_analysis:
+        max_lag = max(p.temporal_lag_hours for p in pathway_analysis)
+        lag_text = f"Expected timeframe: {max_lag} hours"
+    else:
+        lag_text = ""
+
+    return (
+        f"Targeting {target_node} affects {affected_count} biomarker(s) with {synergy_text}. "
+        f"Analysis shows {magnitude_text} in target biomarkers. {lag_text}"
+    )

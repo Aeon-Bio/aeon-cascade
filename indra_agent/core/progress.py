@@ -5,10 +5,13 @@ during long-running workflows, enabling real-time user feedback via SSE.
 """
 
 import asyncio
+import logging
 import time
 from contextlib import asynccontextmanager
 from typing import AsyncGenerator, Callable, Any
 from pydantic import BaseModel
+
+logger = logging.getLogger(__name__)
 
 
 class ProgressUpdate(BaseModel):
@@ -19,7 +22,11 @@ class ProgressUpdate(BaseModel):
     action: str  # Human-readable description
     progress_percent: int  # Overall progress 0-100
     duration_ms: int  # Time this step took (0 if in progress)
+    phase: str = "initialization"  # Workflow phase: initialization | grounding | discovery | synthesis | complete
     metadata: dict[str, Any] | None = None  # Optional: entity_count, path_count, etc.
+
+    # Discovery narrative (populated during discovery phase)
+    narrative: dict[str, Any] | None = None  # Rich discovery details for frontend display
 
 
 class ProgressEmitter:
@@ -51,7 +58,9 @@ class ProgressEmitter:
         agent: str,
         action: str,
         progress_percent: int,
+        phase: str = "initialization",
         metadata: dict[str, Any] | None = None,
+        narrative: dict[str, Any] | None = None,
     ) -> AsyncGenerator[None, None]:
         """Track a single workflow step with automatic timing.
 
@@ -59,7 +68,9 @@ class ProgressEmitter:
             agent: Agent name (e.g., "indra_query_agent")
             action: Human-readable description
             progress_percent: Overall progress 0-100
+            phase: Workflow phase (initialization | grounding | discovery | synthesis | complete)
             metadata: Optional metadata (entity_count, path_count, etc.)
+            narrative: Optional rich narrative for frontend display
 
         Yields:
             None (context manager for wrapping work)
@@ -67,9 +78,15 @@ class ProgressEmitter:
         Example:
             async with emitter.step(
                 agent="indra_query_agent",
-                action="Querying INDRA for causal paths",
+                action="Exploring pathway: PM2.5 → CRP",
                 progress_percent=48,
-                metadata={"entity_count": 5}
+                phase="discovery",
+                metadata={"source": "PM2.5", "target": "CRP"},
+                narrative={
+                    "pathway": "PM2.5 → CRP",
+                    "discoveries_so_far": 3,
+                    "total_evidence_papers": 451
+                }
             ):
                 paths = await query_indra(...)
         """
@@ -84,8 +101,11 @@ class ProgressEmitter:
                 action=action,
                 progress_percent=progress_percent,
                 duration_ms=0,  # Not yet complete
+                phase=phase,
                 metadata=metadata,
+                narrative=narrative,
             )
+            logger.info(f"Progress START: {progress_percent}% [{phase}] - {agent}: {action}")
             if asyncio.iscoroutinefunction(self.callback):
                 await self.callback(update)
             else:
@@ -103,8 +123,11 @@ class ProgressEmitter:
                     action=f"✓ {action}",  # Mark complete
                     progress_percent=progress_percent,
                     duration_ms=duration_ms,
+                    phase=phase,
                     metadata=metadata,
+                    narrative=narrative,
                 )
+                logger.info(f"Progress COMPLETE: {progress_percent}% [{phase}] - {agent}: ✓ {action} ({duration_ms}ms)")
                 if asyncio.iscoroutinefunction(self.callback):
                     await self.callback(update)
                 else:

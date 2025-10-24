@@ -68,58 +68,6 @@ services:
           cpus: '0.5'
           memory: 512M
 
-  # =============================================================================
-  # Aeon Gateway: Temporal Bayesian modeling service
-  # =============================================================================
-  aeon-gateway:
-    build:
-      context: ./aeon-gateway
-      dockerfile: Dockerfile
-    container_name: aeon-gateway
-    ports:
-      - "8001:8001"
-    environment:
-      # URL to INDRA agent service
-      - AGENTIC_SYSTEM_URL=http://indra-agent:8000
-      - LOG_LEVEL=${LOG_LEVEL:-INFO}
-
-    # volumes:
-      # Optional: Mount .env file for local development
-      # - ./aeon-gateway/.env:/opt/app/.env:ro
-
-      # Optional: Mount source code for development
-      # - ./aeon-gateway/src:/opt/app/src:ro
-
-    healthcheck:
-      test: ["CMD-SHELL", "python -c 'import httpx; httpx.get(\"http://localhost:8001/health\", timeout=5.0)'"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-      start_period: 10s
-
-    depends_on:
-      indra-agent:
-        condition: service_healthy
-
-    restart: unless-stopped
-
-    networks:
-      - digitalme-network
-
-    # Security context: Run as non-root user
-    security_opt:
-      - no-new-privileges:true
-
-    # Resource limits
-    deploy:
-      resources:
-        limits:
-          cpus: '1.0'
-          memory: 1G
-        reservations:
-          cpus: '0.25'
-          memory: 256M
-
 networks:
   digitalme-network:
     driver: bridge
@@ -136,17 +84,14 @@ networks:
 # 2. Build and start all services:
 #    docker-compose up --build
 #
-# 3. Access services:
-#    - INDRA Agent: http://localhost:8000/docs
-#    - Aeon Gateway: http://localhost:8001/docs
+# 3. Access service:
+#    - INDRA Agent API: http://localhost:8000/docs
 #
 # 4. Check health:
 #    curl http://localhost:8000/health
-#    curl http://localhost:8001/health
 #
 # 5. View logs:
 #    docker-compose logs -f indra-agent
-#    docker-compose logs -f aeon-gateway
 #
 # 6. Stop services:
 #    docker-compose down

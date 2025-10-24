@@ -15,6 +15,7 @@ from indra_agent.core.models import (
     ErrorResponse,
     Metadata,
 )
+from indra_agent.core.progress import ProgressEmitter
 
 logger = logging.getLogger(__name__)
 
@@ -27,21 +28,36 @@ class INDRAAgentClient:
         self.graph = None
         logger.info("INDRA agent client created (graph will be initialized on first use)")
 
-    async def _ensure_graph(self):
+    async def _ensure_graph(self, progress_emitter: ProgressEmitter | None = None):
         """Ensure graph is initialized."""
         if self.graph is None:
-            logger.info("Initializing causal discovery graph")
-            self.graph = await create_causal_discovery_graph()
-            logger.info("Graph initialized successfully")
+            # Emit initialization progress
+            if progress_emitter:
+                async with progress_emitter.step(
+                    agent="system",
+                    action="Initializing causal discovery agents",
+                    progress_percent=1
+                ):
+                    logger.info("Initializing causal discovery graph")
+                    self.graph = await create_causal_discovery_graph()
+                    logger.info("Graph initialized successfully")
+            else:
+                logger.info("Initializing causal discovery graph")
+                self.graph = await create_causal_discovery_graph()
+                logger.info("Graph initialized successfully")
 
     async def process_request(
-        self, request: CausalDiscoveryRequest, timeout: float = 30.0
+        self,
+        request: CausalDiscoveryRequest,
+        timeout: float = 30.0,
+        progress_emitter: ProgressEmitter | None = None,
     ) -> Union[CausalDiscoveryResponse, ErrorResponse]:
         """Process causal discovery request.
 
         Args:
             request: Causal discovery request
             timeout: Timeout in seconds (default: 30.0)
+            progress_emitter: Optional progress emitter for real-time updates
 
         Returns:
             CausalDiscoveryResponse or ErrorResponse
@@ -49,8 +65,8 @@ class INDRAAgentClient:
         logger.info(f"Processing request: {request.request_id}")
 
         try:
-            # Ensure graph is initialized
-            await self._ensure_graph()
+            # Ensure graph is initialized (with progress tracking)
+            await self._ensure_graph(progress_emitter)
 
             # Prepare initial state with HumanMessage
             user_message = HumanMessage(content=request.query.text)
@@ -71,14 +87,25 @@ class INDRAAgentClient:
                 "metadata": {},
                 "next_agent": "",
                 "current_agent": "",
+                "progress_emitter": progress_emitter,  # Pass to agents
             }
 
-            # Run graph with timeout and 20-iteration limit to prevent indefinite hangs
+            # Run graph with timeout and 50-iteration limit to prevent indefinite hangs
             try:
                 final_state = await asyncio.wait_for(
-                    self.graph.ainvoke(initial_state, {"recursion_limit": 20}),
+                    self.graph.ainvoke(initial_state, {"recursion_limit": 50}),
                     timeout=timeout
                 )
+
+                # Emit final progress: workflow complete (90%)
+                if progress_emitter:
+                    async with progress_emitter.step(
+                        agent="system",
+                        action="Finalizing results and generating insights",
+                        progress_percent=90
+                    ):
+                        pass  # Just mark completion
+
             except asyncio.TimeoutError:
                 logger.error(f"Request {request.request_id} timed out after {timeout} seconds")
                 return ErrorResponse(

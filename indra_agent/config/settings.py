@@ -40,6 +40,10 @@ class Settings(BaseSettings):
     # Agent Settings (AWS Bedrock Model ID)
     agent_model: str = "us.anthropic.claude-sonnet-4-5-20250929-v1:0"
     agent_temperature: float = 0.0
+    agent_request_timeout: int = 1800  # 30 minutes - complex indirect pathway discovery can take time
+
+    # CORS Settings
+    cors_allowed_origins: str = "http://localhost:5173,http://localhost:5174,http://localhost:3000"  # Comma-separated list of allowed origins
 
     @property
     def is_iqair_configured(self) -> bool:

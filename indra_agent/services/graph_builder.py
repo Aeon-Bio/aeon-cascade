@@ -7,7 +7,10 @@ the API specification, including effect size calculation and temporal lag estima
 import logging
 from typing import Any, Dict, List, Set
 
-from indra_agent.config.cached_responses import get_genetic_modifier
+import networkx as nx
+from indra.statements import Statement
+
+from indra_agent.config.genetic_modifiers import get_genetic_modifier
 from indra_agent.core.models import (
     CausalGraph,
     Edge,
@@ -16,12 +19,18 @@ from indra_agent.core.models import (
     Grounding,
     Node,
 )
+from indra_agent.services.indranet_service import IndraNetworkResult
 
 logger = logging.getLogger(__name__)
 
 
 class GraphBuilderService:
     """Service for building causal graphs from INDRA paths."""
+
+    # Effect size calculation parameters (from mathematical-foundation.md)
+    ALPHA = 0.6  # Weight on belief score
+    BETA = 0.1   # Weight on evidence accumulation
+    MAX_EFFECT = 0.95  # Stability cap (ensures spectral radius < 1)
 
     # Temporal lag estimates based on mechanism type
     TEMPORAL_LAG_MAP = {
@@ -38,12 +47,16 @@ class GraphBuilderService:
         self,
         paths: List[Dict[str, Any]],
         genetics: Dict[str, str],
+        effect_modifiers: Dict[str, float] = None,
     ) -> CausalGraph:
         """Build causal graph from INDRA paths.
 
         Args:
             paths: List of INDRA paths
-            genetics: User genetic variants
+            genetics: User genetic variants (DEPRECATED - use effect_modifiers)
+            effect_modifiers: Optional dict from VCFParser.to_effect_modifiers()
+                Example: {"GSTM1_null": 2.34, "TCF7L2_rs7903146": 1.225}
+                These are zygosity-adjusted, literature-derived effect sizes.
 
         Returns:
             CausalGraph with nodes, edges, and genetic modifiers
@@ -68,13 +81,153 @@ class GraphBuilderService:
         # Remove duplicate edges (keep highest evidence)
         edges = self._deduplicate_edges(edges)
 
-        # Apply genetic modifiers
-        genetic_modifiers = self._apply_genetic_modifiers(genetics, node_map)
+        # Apply genetic modifiers (preferring effect_modifiers from VCF parser)
+        genetic_modifiers = self._apply_genetic_modifiers(
+            genetics, node_map, effect_modifiers
+        )
 
         return CausalGraph(
             nodes=list(node_map.values()),
             edges=edges,
             genetic_modifiers=genetic_modifiers,
+        )
+
+    def build_causal_graph_from_indranet(
+        self,
+        indranet_result: IndraNetworkResult,
+        genetics: Dict[str, str],
+        effect_modifiers: Dict[str, float] = None,
+    ) -> CausalGraph:
+        """Build causal graph from IndraNetworkResult.
+
+        This method converts the NetworkX graph and INDRA statements from
+        IndraNetService into the API-compliant CausalGraph format.
+
+        Args:
+            indranet_result: Result from IndraNetService.build_biomarker_network()
+            genetics: User genetic variants (DEPRECATED - use effect_modifiers)
+            effect_modifiers: Optional dict from VCFParser.to_effect_modifiers()
+
+        Returns:
+            CausalGraph with nodes, edges, and genetic modifiers
+        """
+        logger.info(
+            f"Building causal graph from IndraNet: "
+            f"{len(indranet_result.node_names)} nodes, {indranet_result.edge_count} edges"
+        )
+
+        # Collect nodes from NetworkX graph
+        node_map: Dict[str, Node] = {}
+        for node_id in indranet_result.graph.nodes():
+            # Get node data from graph
+            node_data = indranet_result.graph.nodes[node_id]
+
+            # Create node
+            node_map[node_id] = self._create_node_from_name(
+                node_id, node_data
+            )
+
+        # Collect edges from NetworkX graph
+        edges: List[Edge] = []
+        for source, target, edge_data in indranet_result.graph.edges(data=True):
+            # Get belief and evidence from IndraNet metadata
+            belief = indranet_result.belief_scores.get((source, target), 0.5)
+            evidence_count = indranet_result.evidence_counts.get((source, target), 0)
+
+            # Determine relationship type from edge sign
+            # NOTE: Map to Pydantic enum values: ["activates", "inhibits", "increases", "decreases"]
+            sign = edge_data.get("sign", 0)
+            if sign > 0:
+                relationship = "activates"
+            elif sign < 0:
+                relationship = "inhibits"
+            else:
+                # Unsigned edge (sign=0) - use generic "increases"
+                # This avoids ValidationError from "regulates" not in enum
+                relationship = "increases"
+
+            # Get statement type from edge data
+            stmt_type = edge_data.get("stmt_type", "Activation")
+
+            # Calculate effect size
+            effect_size = self._calculate_effect_size(belief, evidence_count)
+
+            # Estimate temporal lag
+            temporal_lag = self.TEMPORAL_LAG_MAP.get(
+                stmt_type, self.TEMPORAL_LAG_MAP["default"]
+            )
+
+            # Create edge
+            edges.append(
+                Edge(
+                    source=source,
+                    target=target,
+                    relationship=relationship,
+                    evidence=Evidence(
+                        count=evidence_count,
+                        confidence=belief,
+                        sources=[],  # PMIDs not in NetworkX metadata
+                        summary=f"{source} {relationship} {target}",
+                    ),
+                    effect_size=effect_size,
+                    temporal_lag_hours=temporal_lag,
+                )
+            )
+
+        # Remove duplicate edges (keep highest evidence)
+        edges = self._deduplicate_edges(edges)
+
+        # Apply genetic modifiers
+        genetic_modifiers = self._apply_genetic_modifiers(
+            genetics, node_map, effect_modifiers
+        )
+
+        logger.info(
+            f"Built causal graph: {len(node_map)} nodes, {len(edges)} edges, "
+            f"{len(genetic_modifiers)} genetic modifiers"
+        )
+
+        return CausalGraph(
+            nodes=list(node_map.values()),
+            edges=edges,
+            genetic_modifiers=genetic_modifiers,
+        )
+
+    def _create_node_from_name(
+        self, node_id: str, node_data: Dict[str, Any]
+    ) -> Node:
+        """Create Node from NetworkX node name and data.
+
+        Args:
+            node_id: Node identifier (e.g., "CRP", "IL6")
+            node_data: Node data from NetworkX graph
+
+        Returns:
+            Node instance
+        """
+        # Try to infer database from node name
+        # For now, assume HGNC for gene/protein names
+        database = "HGNC"
+
+        # Common MESH entities
+        if node_id in ["PM2.5", "PM10", "ozone", "NO2"]:
+            database = "MESH"
+
+        # GO processes
+        if "stress" in node_id.lower() or "inflammation" in node_id.lower():
+            database = "GO"
+
+        # Determine node type
+        node_type = self._infer_node_type(node_id, database)
+
+        return Node(
+            id=node_id,
+            type=node_type,
+            label=node_id,  # Use node ID as label
+            grounding=Grounding(
+                database=database,
+                identifier="",  # Not available from NetworkX
+            ),
         )
 
     def _create_node(self, node_data: Dict[str, Any]) -> Node:
@@ -168,7 +321,15 @@ class GraphBuilderService:
         )
 
     def _calculate_effect_size(self, belief: float, evidence_count: int) -> float:
-        """Calculate effect size from INDRA belief score.
+        """Calculate effect size from INDRA belief score and evidence count.
+
+        Formula (from mathematical-foundation.md):
+            W_ij = min(α·belief + β·log(1 + evidence_count), W_max)
+
+        Where:
+            α = 0.6  (weight on belief score)
+            β = 0.1  (weight on evidence accumulation)
+            W_max = 0.95  (stability cap)
 
         Args:
             belief: INDRA belief score (0-1)
@@ -176,20 +337,27 @@ class GraphBuilderService:
 
         Returns:
             Effect size in [0, 1] range
+
+        Raises:
+            ValueError: If belief is not in [0, 1]
         """
-        # Base effect from belief
-        effect = belief * 0.8
+        import math
 
-        # Boost for high evidence
-        if evidence_count > 100:
-            effect += 0.15
-        elif evidence_count > 50:
-            effect += 0.10
-        elif evidence_count > 20:
-            effect += 0.05
+        # Validate input
+        if not 0 <= belief <= 1:
+            raise ValueError(f"Belief must be ∈ [0,1], got {belief}")
 
-        # Cap at 0.95 (avoid determinism)
-        return min(effect, 0.95)
+        # Calculate base effect from belief
+        base_effect = self.ALPHA * belief
+
+        # Add logarithmic bonus from evidence count
+        # log(1 + n) ensures smooth scaling: log(1) = 0, log(101) ≈ 4.6
+        evidence_bonus = self.BETA * math.log(1 + evidence_count)
+
+        # Combine and cap at MAX_EFFECT for stability
+        effect_size = min(base_effect + evidence_bonus, self.MAX_EFFECT)
+
+        return effect_size
 
     def _deduplicate_edges(self, edges: List[Edge]) -> List[Edge]:
         """Remove duplicate edges, keeping highest evidence.
@@ -212,42 +380,74 @@ class GraphBuilderService:
         return list(edge_map.values())
 
     def _apply_genetic_modifiers(
-        self, genetics: Dict[str, str], node_map: Dict[str, Node]
+        self,
+        genetics: Dict[str, str],
+        node_map: Dict[str, Node],
+        effect_modifiers: Dict[str, float] = None,
     ) -> List[GeneticModifier]:
         """Apply genetic modifiers to causal graph.
 
+        PREFERRED: Pass effect_modifiers from VCFParser.to_effect_modifiers() for
+        zygosity-adjusted, literature-derived effect sizes with PMIDs.
+
         Args:
-            genetics: User genetic variants
+            genetics: User genetic variants (DEPRECATED - only for variant names)
             node_map: Map of node IDs to Node objects
+            effect_modifiers: Optional dict from VCFParser.to_effect_modifiers()
+                Example: {"GSTM1_null": 2.34, "TCF7L2_rs7903146": 1.225}
 
         Returns:
-            List of genetic modifiers
+            List of genetic modifiers with literature-derived effect sizes
         """
         modifiers = []
         node_ids = set(node_map.keys())
 
-        for gene, variant in genetics.items():
-            # Format as variant key
-            variant_key = f"{gene}_{variant.replace('/', '')}"
+        # If effect_modifiers provided (VCF parser output), use directly
+        if effect_modifiers:
+            for variant_key, magnitude in effect_modifiers.items():
+                # Get base info (affected nodes, description) from config
+                modifier_info = get_genetic_modifier(variant_key, effect_modifiers)
+                if not modifier_info:
+                    continue
 
-            # Get modifier info
-            modifier_info = get_genetic_modifier(variant_key)
-            if not modifier_info:
-                continue
+                # Check if any affected nodes are in graph
+                affected_nodes = modifier_info.get("affected_nodes", [])
+                present_nodes = [n for n in affected_nodes if n in node_ids]
 
-            # Check if any affected nodes are in graph
-            affected_nodes = modifier_info.get("affected_nodes", [])
-            present_nodes = [n for n in affected_nodes if n in node_ids]
-
-            if present_nodes:
-                modifiers.append(
-                    GeneticModifier(
-                        variant=variant_key,
-                        affected_nodes=present_nodes,
-                        effect_type=modifier_info["effect_type"],
-                        magnitude=modifier_info["magnitude"],
+                if present_nodes:
+                    modifiers.append(
+                        GeneticModifier(
+                            variant=variant_key,
+                            affected_nodes=present_nodes,
+                            effect_type=modifier_info["effect_type"],
+                            magnitude=magnitude,  # Zygosity-adjusted from VCF
+                        )
                     )
-                )
+
+        # Fallback to genetics dict (deprecated path for backward compatibility)
+        elif genetics:
+            for gene, variant in genetics.items():
+                # Format as variant key
+                variant_key = f"{gene}_{variant.replace('/', '')}"
+
+                # Get modifier info
+                modifier_info = get_genetic_modifier(variant_key)
+                if not modifier_info:
+                    continue
+
+                # Check if any affected nodes are in graph
+                affected_nodes = modifier_info.get("affected_nodes", [])
+                present_nodes = [n for n in affected_nodes if n in node_ids]
+
+                if present_nodes:
+                    modifiers.append(
+                        GeneticModifier(
+                            variant=variant_key,
+                            affected_nodes=present_nodes,
+                            effect_type=modifier_info["effect_type"],
+                            magnitude=modifier_info["magnitude"],
+                        )
+                    )
 
         return modifiers
 

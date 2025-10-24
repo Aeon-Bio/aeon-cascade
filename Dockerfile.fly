@@ -1,0 +1,58 @@
+# Multi-stage build for Aeon Cascade
+# Stage 1: Build frontend
+FROM node:20-slim AS frontend-builder
+
+WORKDIR /build/frontend
+
+# Copy frontend package files
+COPY frontend/package*.json ./
+RUN npm ci
+
+# Copy frontend source
+COPY frontend/ ./
+
+# Set API URL for build (will be overridden at runtime by Fly.io environment)
+ENV PUBLIC_API_URL=http://localhost:8000
+
+# Build frontend for production
+RUN npm run build
+
+# Stage 2: Production image
+FROM python:3.11-slim
+
+# Install Node.js for serving frontend
+RUN apt-get update && \
+    apt-get install -y curl && \
+    curl -fsSL https://deb.nodesource.com/setup_20.x | bash - && \
+    apt-get install -y nodejs && \
+    apt-get clean && \
+    rm -rf /var/lib/apt/lists/*
+
+WORKDIR /app
+
+# Copy Python project files
+COPY pyproject.toml ./
+COPY indra_agent/ ./indra_agent/
+
+# Install Python dependencies
+RUN pip install --no-cache-dir -e .
+
+# Copy built frontend from builder stage
+COPY --from=frontend-builder /build/frontend/build /app/frontend/build
+COPY --from=frontend-builder /build/frontend/package.json /app/frontend/package.json
+COPY --from=frontend-builder /build/frontend/package-lock.json /app/frontend/package-lock.json
+
+# Install production dependencies for the frontend server
+RUN cd /app/frontend && npm ci --omit=dev
+
+# Copy startup script
+COPY deploy/start.sh /app/start.sh
+RUN chmod +x /app/start.sh
+
+WORKDIR /app
+
+# Expose ports
+EXPOSE 8000 3000
+
+# Start both services
+CMD ["/app/start.sh"]
