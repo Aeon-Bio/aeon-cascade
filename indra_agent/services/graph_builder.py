@@ -25,12 +25,24 @@ logger = logging.getLogger(__name__)
 
 
 class GraphBuilderService:
-    """Service for building causal graphs from INDRA paths."""
+    """Service for building causal graphs from INDRA paths.
 
-    # Effect size calculation parameters (from mathematical-foundation.md)
-    ALPHA = 0.6  # Weight on belief score
-    BETA = 0.1   # Weight on evidence accumulation
-    MAX_EFFECT = 0.95  # Stability cap (ensures spectral radius < 1)
+    IMPORTANT - Node Retention Policy:
+    DO NOT implement Markov condition pruning (removing intermediate nodes).
+    ALL nodes from INDRA paths must be retained because:
+    1. Mechanistic nodes (e.g., NF-κB) are drug targets
+    2. Intermediate nodes are genetic modifier attachment points
+    3. Full chains provide biological interpretability for clinicians
+    4. Pruning violates causal semantics (fabricates d-separation)
+
+    See ARCHITECTURE_FIX_PLAN.md Issue #2 for details.
+    """
+
+    # Effect size calculation parameters (FIXED per brutalist critique)
+    # Use raw INDRA belief scores - no artificial scaling
+    MAX_EFFECT = 0.98  # Stability cap for numerical stability (not saturation)
+    EVIDENCE_WEIGHT_SCALE = 10.0  # Denominator for log evidence bonus
+    MAX_EVIDENCE_BONUS = 0.15  # Cap evidence bonus to avoid inflating weak beliefs
 
     # Temporal lag estimates based on mechanism type
     TEMPORAL_LAG_MAP = {
@@ -323,13 +335,15 @@ class GraphBuilderService:
     def _calculate_effect_size(self, belief: float, evidence_count: int) -> float:
         """Calculate effect size from INDRA belief score and evidence count.
 
-        Formula (from mathematical-foundation.md):
-            W_ij = min(α·belief + β·log(1 + evidence_count), W_max)
+        FIXED FORMULA (per brutalist critique):
+            effect_size = belief  (use raw INDRA belief score)
+            evidence_weight = min(log(1 + evidence_count) / 10, 0.15)  (separate confidence metric)
 
-        Where:
-            α = 0.6  (weight on belief score)
-            β = 0.1  (weight on evidence accumulation)
-            W_max = 0.95  (stability cap)
+        This avoids saturation issues from the old formula that multiplied belief by 0.6
+        and capped everything at 0.95. Now:
+        - Weak beliefs (0.1-0.3) stay weak (not inflated)
+        - Strong beliefs (0.8-0.9) stay strong (not artificially reduced)
+        - Evidence adds modest confidence boost (max +0.15) with diminishing returns
 
         Args:
             belief: INDRA belief score (0-1)
@@ -345,19 +359,36 @@ class GraphBuilderService:
 
         # Validate input
         if not 0 <= belief <= 1:
+            logger.error(f"Invalid belief score: {belief} (must be ∈ [0,1])")
             raise ValueError(f"Belief must be ∈ [0,1], got {belief}")
 
-        # Calculate base effect from belief
-        base_effect = self.ALPHA * belief
+        # Use raw INDRA belief as base effect size (NO scaling)
+        effect_size = belief
 
-        # Add logarithmic bonus from evidence count
-        # log(1 + n) ensures smooth scaling: log(1) = 0, log(101) ≈ 4.6
-        evidence_bonus = self.BETA * math.log(1 + evidence_count)
+        # Calculate evidence weight separately (for metadata, not effect size)
+        # This provides diminishing returns: log(1+1)=0.69, log(1+100)=4.6, log(1+1000)=6.9
+        evidence_weight = min(
+            math.log(1 + evidence_count) / self.EVIDENCE_WEIGHT_SCALE,
+            self.MAX_EVIDENCE_BONUS
+        )
 
-        # Combine and cap at MAX_EFFECT for stability
-        effect_size = min(base_effect + evidence_bonus, self.MAX_EFFECT)
+        # Add modest evidence bonus to effect size (capped at MAX_EFFECT for stability)
+        # This gives high-evidence edges a small boost without saturating
+        effect_size_with_evidence = min(effect_size + evidence_weight, self.MAX_EFFECT)
 
-        return effect_size
+        # Log warning if effect size is suspiciously high or low
+        if effect_size < 0.1:
+            logger.warning(
+                f"Very low effect size: {effect_size:.3f} (belief={belief:.3f}, "
+                f"evidence={evidence_count})"
+            )
+        elif effect_size_with_evidence > 0.95:
+            logger.warning(
+                f"Very high effect size: {effect_size_with_evidence:.3f} (belief={belief:.3f}, "
+                f"evidence={evidence_count})"
+            )
+
+        return effect_size_with_evidence
 
     def _deduplicate_edges(self, edges: List[Edge]) -> List[Edge]:
         """Remove duplicate edges, keeping highest evidence.

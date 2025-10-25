@@ -4,9 +4,12 @@ These models define the request/response contract as specified in
 agentic-system-spec.md.
 """
 
+import logging
 from typing import Any, Dict, List, Literal, Optional
 
 from pydantic import BaseModel, Field, field_validator
+
+logger = logging.getLogger(__name__)
 
 
 class LocationHistory(BaseModel):
@@ -72,9 +75,44 @@ class Evidence(BaseModel):
     """Evidence supporting a causal relationship."""
 
     count: int = Field(ge=0, description="Number of supporting papers")
-    confidence: float = Field(ge=0, le=1, description="Confidence score")
+    confidence: float = Field(ge=0, le=1, description="Confidence score (INDRA belief)")
     sources: List[str] = Field(description="List of PMIDs")
     summary: str
+
+    @field_validator("confidence")
+    @classmethod
+    def validate_confidence(cls, v: float) -> float:
+        """Validate INDRA belief score (confidence).
+
+        This is separate from effect_size but should also be [0, 1].
+        """
+        if not 0 <= v <= 1:
+            logger.error(f"Invalid confidence score: {v} (must be ∈ [0,1])")
+            raise ValueError(f"confidence must be in [0, 1], got {v}")
+
+        # Warn about suspiciously low confidence
+        if v < 0.1:
+            logger.warning(
+                f"Very low confidence: {v:.3f}. "
+                f"Consider filtering low-belief edges (min_belief=0.2)."
+            )
+
+        return v
+
+    @field_validator("count")
+    @classmethod
+    def validate_count(cls, v: int) -> int:
+        """Validate evidence count.
+
+        Warn about edges with no supporting papers.
+        """
+        if v == 0:
+            logger.warning(
+                "Edge has 0 supporting papers. "
+                "Consider setting min_evidence_count > 0 in RequestOptions."
+            )
+
+        return v
 
 
 class Edge(BaseModel):
@@ -91,18 +129,68 @@ class Edge(BaseModel):
 
     @field_validator("effect_size")
     @classmethod
-    def validate_effect_size(cls, v: float) -> float:
-        """Ensure effect_size is in valid range [0, 1]."""
+    def validate_effect_size(cls, v: float, info) -> float:
+        """Ensure effect_size is in valid range [0, 1] with warnings.
+
+        This validator prevents Monte Carlo crashes from malformed INDRA data.
+        See ARCHITECTURE_FIX_PLAN.md Issue #8 for details.
+        """
+        # Hard constraints (raise errors)
         if not 0 <= v <= 1:
+            logger.error(
+                f"Invalid effect_size: {v} (must be ∈ [0,1]). "
+                f"This violates probability constraints for Monte Carlo simulation."
+            )
             raise ValueError(f"effect_size must be in [0, 1], got {v}")
+
+        # Soft warnings (log but allow)
+        edge_info = f"{info.data.get('source', '?')} → {info.data.get('target', '?')}"
+
+        if v < 0.05:
+            logger.warning(
+                f"Very weak effect: {edge_info} has effect_size={v:.4f} "
+                f"(< 0.05). Consider filtering low-confidence edges."
+            )
+        elif v > 0.98:
+            logger.warning(
+                f"Near-deterministic effect: {edge_info} has effect_size={v:.4f} "
+                f"(> 0.98). May indicate over-confident INDRA belief or saturated formula."
+            )
+
         return v
 
     @field_validator("temporal_lag_hours")
     @classmethod
-    def validate_temporal_lag(cls, v: int) -> int:
-        """Ensure temporal_lag_hours is non-negative."""
+    def validate_temporal_lag(cls, v: int, info) -> int:
+        """Ensure temporal_lag_hours is non-negative (causality constraint).
+
+        Negative temporal lag violates causality (effect before cause).
+        See ARCHITECTURE_FIX_PLAN.md Issue #8 for details.
+        """
+        edge_info = f"{info.data.get('source', '?')} → {info.data.get('target', '?')}"
+
+        # Hard constraint: causality violation
         if v < 0:
-            raise ValueError(f"temporal_lag_hours must be >= 0, got {v}")
+            logger.error(
+                f"Causality violation: {edge_info} has temporal_lag={v}h "
+                f"(negative lag means effect before cause!)"
+            )
+            raise ValueError(
+                f"temporal_lag_hours must be >= 0 (causality constraint), got {v}"
+            )
+
+        # Soft warnings
+        if v == 0:
+            logger.warning(
+                f"Instantaneous effect: {edge_info} has temporal_lag=0h. "
+                f"May want to set minimum lag (e.g., 1h) for biological realism."
+            )
+        elif v > 168:  # > 1 week
+            logger.warning(
+                f"Long temporal lag: {edge_info} has temporal_lag={v}h "
+                f"({v/24:.1f} days). May lose relevance for short-term predictions."
+            )
+
         return v
 
 
