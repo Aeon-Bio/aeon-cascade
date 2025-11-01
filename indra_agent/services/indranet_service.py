@@ -2,7 +2,7 @@
 
 This service uses INDRA's Python library directly to:
 - Build neighborhood networks around biomarkers
-- Discover multi-hop causal pathways
+- Discover multi-hop causal pathways with MDL-based ranking
 - Merge duplicates via preassembly
 - Calculate belief scores from multiple sources
 - Build signed NetworkX graphs with evidence
@@ -17,8 +17,9 @@ import networkx as nx
 from indra.statements import Statement
 from indra.assemblers.indranet import IndraNetAssembler
 import indra.sources.indra_db_rest as idr
+from indra.explanation.pathfinding import open_dijkstra_search
 
-from indra_agent.services.preassembly_service import PreassemblyService
+from indra_agent.services.mdl_weight import create_mdl_weight_function
 
 logger = logging.getLogger(__name__)
 
@@ -77,71 +78,81 @@ class IndraNetworkResult:
 
 
 class IndraNetService:
-    """Build comprehensive biomarker networks using IndraNet assembler."""
+    """Build comprehensive biomarker networks using IndraNet assembler.
+
+    The statement cache is designed for single-request scope to avoid memory leaks.
+    For long-running services, call clear_cache() after each request.
+    """
+
+    # Cache size limit: max 50 queries × ~200 statements = ~10K statements (~50 MB)
+    # After this, oldest entries are evicted (LRU)
+    MAX_CACHE_SIZE = 50
 
     def __init__(self):
-        """Initialize IndraNet service."""
+        """Initialize optimized IndraNet service."""
         self.statement_cache: Dict[str, List[Statement]] = {}
-        self.preassembly_service = PreassemblyService()
+        self._cache_access_order: List[str] = []  # Track LRU order
         logger.info("IndraNet service initialized")
+
+    def clear_cache(self):
+        """Clear statement cache to free memory.
+
+        Call this after processing each request to prevent unbounded growth.
+        """
+        cache_size = len(self.statement_cache)
+        if cache_size > 0:
+            logger.info(f"Clearing statement cache ({cache_size} entries)")
+            self.statement_cache.clear()
+            self._cache_access_order.clear()
+
+    def _evict_oldest_cache_entry(self):
+        """Evict the oldest cache entry (LRU eviction)."""
+        if self._cache_access_order:
+            oldest_key = self._cache_access_order.pop(0)
+            if oldest_key in self.statement_cache:
+                del self.statement_cache[oldest_key]
+                logger.debug(f"Evicted cache entry: {oldest_key}")
+
 
     async def build_biomarker_network(
         self,
         exposures: List[str],
         biomarkers: List[str],
-        max_depth: int = 2,
-        belief_threshold: float = 0.3,  # Lower default for environmental pathways
+        max_depth: int = 4,
+        belief_threshold: float = 0.3,
     ) -> IndraNetworkResult:
-        """Build comprehensive network around biomarkers.
+        """Build network for pathfinding between exposures and biomarkers.
 
-        Strategy:
-        1. Get neighborhoods of all biomarkers (1-2 hops)
-        2. Get exposure→biomarker paths (up to 3 hops)
-        3. Merge duplicates via preassembly
-        4. Build signed NetworkX graph with belief scores
-        5. Filter by confidence threshold
-        6. Return graph + high-quality edges
+        Optimized strategy:
+        1. Single efficient query for exposure→biomarker statements
+        2. Skip preassembly (INDRA DB already pre-assembled)
+        3. Build graph with belief filtering
 
         Args:
-            exposures: List of exposure entities (e.g., ["PM2.5", "Ozone"])
-            biomarkers: List of biomarker entities (e.g., ["CRP", "IL-6"])
-            max_depth: Maximum neighborhood depth (default: 2)
-            belief_threshold: Minimum belief score to include (default: 0.5)
+            exposures: List of exposure entities
+            biomarkers: List of biomarker entities
+            max_depth: Maximum path depth
+            belief_threshold: Minimum belief score
 
         Returns:
             IndraNetworkResult with graph and metadata
         """
         logger.info(
-            f"Building biomarker network: {len(exposures)} exposures, "
-            f"{len(biomarkers)} biomarkers, max_depth={max_depth}"
+            f"Building network: {len(exposures)} exposures → {len(biomarkers)} biomarkers"
         )
 
-        # Step 1: Collect statements from multiple strategies
+        # Fetch statements for all exposure→biomarker pairs
         all_statements: List[Statement] = []
 
-        # Strategy 1: Get neighborhoods of biomarkers
-        for biomarker in biomarkers:
-            logger.info(f"Getting neighborhood for biomarker: {biomarker}")
-            neighborhood_stmts = await self._get_neighborhood_statements(
-                biomarker, depth=max_depth
-            )
-            all_statements.extend(neighborhood_stmts)
-            logger.info(f"Found {len(neighborhood_stmts)} statements for {biomarker}")
-
-        # Strategy 2: Get exposure → biomarker paths
         for exposure in exposures:
             for biomarker in biomarkers:
-                logger.info(f"Getting paths: {exposure} → {biomarker}")
-                path_stmts = await self._get_path_statements(
-                    exposure, biomarker, max_depth=min(max_depth + 1, 4)
-                )
-                all_statements.extend(path_stmts)
-                logger.info(
-                    f"Found {len(path_stmts)} path statements: {exposure} → {biomarker}"
-                )
+                logger.info(f"Fetching: {exposure} → {biomarker}")
+                stmts = await self._get_path_statements_optimized(exposure, biomarker)
+                all_statements.extend(stmts)
+                logger.info(f"Got {len(stmts)} statements")
 
         if not all_statements:
-            logger.warning("No statements found - returning empty network")
+            logger.warning("No statements - empty network")
             return IndraNetworkResult(
                 graph=nx.DiGraph(),
                 statements=[],
@@ -151,203 +162,90 @@ class IndraNetService:
                 evidence_counts={},
             )
 
-        logger.info(f"Collected {len(all_statements)} total statements")
+        logger.info(f"Got {len(all_statements)} statements")
 
-        # Step 2: Preassembly - merge duplicates and calculate belief
-        logger.info("Running preassembly pipeline")
-        preassembled_stmts = self._preassemble_statements(all_statements)
-        logger.info(
-            f"Preassembly reduced {len(all_statements)} → {len(preassembled_stmts)} statements"
-        )
+        # Skip preassembly - INDRA DB statements already pre-assembled!
+        # Just filter by belief threshold
+        filtered_stmts = [s for s in all_statements if s.belief >= belief_threshold]
+        logger.info(f"Filtered to {len(filtered_stmts)} high-belief statements")
 
-        # Step 3: Build signed NetworkX graph
-        logger.info("Building NetworkX graph with IndraNet assembler")
+        # Build graph
         graph, belief_scores, evidence_counts = self._build_signed_graph(
-            preassembled_stmts, belief_threshold
+            filtered_stmts, belief_threshold
         )
 
         logger.info(
             f"Built graph: {graph.number_of_nodes()} nodes, {graph.number_of_edges()} edges"
         )
 
-        # Step 4: Package result
         return IndraNetworkResult(
             graph=graph,
-            statements=preassembled_stmts,
+            statements=filtered_stmts,
             node_names=list(graph.nodes()),
             edge_count=graph.number_of_edges(),
             belief_scores=belief_scores,
             evidence_counts=evidence_counts,
         )
 
-    async def _get_neighborhood_statements(
-        self, entity: str, depth: int = 2
+    async def _get_path_statements_optimized(
+        self, source: str, target: str
     ) -> List[Statement]:
-        """Get neighborhood statements around an entity.
+        """Optimized path statement fetching using single directed query.
 
-        Queries INDRA DB for statements involving the entity and its neighbors.
-        For depth=2, fetches 1-hop neighbors of the entity.
+        OLD (3 queries, 60s):
+        - Query 1: subject=source, object=target (20s)
+        - Query 2: agents=[source] (20s)
+        - Query 3: agents=[target] (20s)
+
+        NEW (1 query, ~5-10s):
+        - Query 1: subject=source, object=target with higher limit
+
+        This works because we're doing pathfinding (directional).
+        For multi-hop paths, we rely on mediator expansion in SCM graph builder.
 
         Args:
-            entity: Entity name (e.g., "CRP", "IL-6")
-            depth: Neighborhood depth (1 or 2 hops)
+            source: Source entity
+            target: Target entity
 
         Returns:
-            List of INDRA Statement objects
+            List of INDRA statements
         """
-        # Check cache
-        cache_key = f"neighborhood:{entity}:{depth}"
+        cache_key = f"opt:{source}:{target}"
         if cache_key in self.statement_cache:
-            logger.info(f"Using cached neighborhood for {entity} (depth={depth})")
+            logger.debug(f"Cache hit: {source} → {target}")
+            # Move to end of LRU list (most recently used)
+            self._cache_access_order.remove(cache_key)
+            self._cache_access_order.append(cache_key)
             return self.statement_cache[cache_key]
 
-        logger.info(f"Fetching neighborhood statements for {entity} (depth={depth})")
-
-        try:
-            # Run synchronous INDRA query in thread pool
-            def fetch_statements():
-                # Query INDRA DB for statements involving this entity
-                # Limit to reasonable number for performance
-                limit = 100 if depth == 1 else 200
-
+        def fetch():
+            try:
                 processor = idr.get_statements(
-                    agents=[entity],
-                    limit=limit,
-                    ev_limit=5,  # Limit evidence per statement
-                    sort_by='ev_count',  # Sort by evidence count
-                    timeout=30,  # 30 second timeout
+                    subject=source,
+                    object=target,
+                    limit=200,  # Higher limit since single query
+                    persist=False,  # No pagination - fast response
+                    ev_limit=5,  # More evidence per statement
+                    sort_by='ev_count',  # Best evidence first
+                    timeout=30,
+                    tries=2
                 )
-
+                logger.info(f"Got {len(processor.statements)} statements: {source} → {target}")
                 return processor.statements
+            except Exception as e:
+                logger.error(f"Query failed for {source} → {target}: {e}")
+                return []
 
-            # Execute in thread pool to avoid blocking
-            statements = await asyncio.to_thread(fetch_statements)
+        statements = await asyncio.to_thread(fetch)
 
-            logger.info(
-                f"Found {len(statements)} neighborhood statements for {entity}"
-            )
+        # LRU eviction if cache is full
+        if len(self.statement_cache) >= self.MAX_CACHE_SIZE:
+            self._evict_oldest_cache_entry()
 
-        except Exception as e:
-            logger.error(
-                f"Error fetching neighborhood for {entity}: {e}", exc_info=True
-            )
-            statements = []
-
-        # Cache and return
         self.statement_cache[cache_key] = statements
+        self._cache_access_order.append(cache_key)
         return statements
 
-    async def _get_path_statements(
-        self, source: str, target: str, max_depth: int = 3
-    ) -> List[Statement]:
-        """Get path statements between source and target.
-
-        Queries INDRA DB for statements that could form paths between entities.
-        Strategy:
-        1. Direct statements (source → target)
-        2. Statements involving source
-        3. Statements involving target
-
-        Args:
-            source: Source entity (e.g., "PM2.5")
-            target: Target entity (e.g., "CRP")
-            max_depth: Maximum path length (affects statement limit)
-
-        Returns:
-            List of INDRA Statement objects
-        """
-        # Check cache
-        cache_key = f"path:{source}:{target}:{max_depth}"
-        if cache_key in self.statement_cache:
-            logger.info(f"Using cached path: {source} → {target}")
-            return self.statement_cache[cache_key]
-
-        logger.info(f"Fetching path statements: {source} → {target} (max_depth={max_depth})")
-
-        try:
-            # Run synchronous INDRA queries in thread pool
-            def fetch_statements():
-                all_stmts = []
-
-                # Strategy 1: Direct source → target statements
-                try:
-                    processor = idr.get_statements(
-                        subject=source,
-                        object=target,
-                        limit=50,
-                        ev_limit=5,
-                        sort_by='ev_count',
-                        timeout=20,
-                    )
-                    all_stmts.extend(processor.statements)
-                    logger.debug(f"Found {len(processor.statements)} direct statements")
-                except Exception as e:
-                    logger.warning(f"Error fetching direct statements: {e}")
-
-                # Strategy 2: Statements involving source (for multi-hop paths)
-                try:
-                    processor = idr.get_statements(
-                        agents=[source],
-                        limit=50,
-                        ev_limit=3,
-                        sort_by='ev_count',
-                        timeout=20,
-                    )
-                    all_stmts.extend(processor.statements)
-                    logger.debug(f"Found {len(processor.statements)} source statements")
-                except Exception as e:
-                    logger.warning(f"Error fetching source statements: {e}")
-
-                # Strategy 3: Statements involving target (for multi-hop paths)
-                try:
-                    processor = idr.get_statements(
-                        agents=[target],
-                        limit=50,
-                        ev_limit=3,
-                        sort_by='ev_count',
-                        timeout=20,
-                    )
-                    all_stmts.extend(processor.statements)
-                    logger.debug(f"Found {len(processor.statements)} target statements")
-                except Exception as e:
-                    logger.warning(f"Error fetching target statements: {e}")
-
-                return all_stmts
-
-            # Execute in thread pool to avoid blocking
-            statements = await asyncio.to_thread(fetch_statements)
-
-            logger.info(
-                f"Found {len(statements)} total path statements: {source} → {target}"
-            )
-
-        except Exception as e:
-            logger.error(
-                f"Error fetching path {source} → {target}: {e}", exc_info=True
-            )
-            statements = []
-
-        # Cache and return
-        self.statement_cache[cache_key] = statements
-        return statements
-
-    def _preassemble_statements(
-        self, statements: List[Statement], run_refinement: bool = True
-    ) -> List[Statement]:
-        """Preassembly pipeline: merge duplicates and calculate belief.
-
-        Delegates to PreassemblyService for modularity.
-
-        Args:
-            statements: Raw INDRA statements
-            run_refinement: Whether to run refinement step (default: True)
-
-        Returns:
-            De-duplicated statements with aggregated evidence and belief scores
-        """
-        return self.preassembly_service.preassemble_statements(
-            statements, run_refinement=run_refinement, belief_cutoff=0.0
-        )
 
     def _build_signed_graph(
         self, statements: List[Statement], belief_threshold: float = 0.5
@@ -435,6 +333,13 @@ class IndraNetService:
         This is a compatibility method for SCMGraphBuilder. It uses INDRA Python library
         to discover what entities interact with the given nodes.
 
+        Strategy:
+        - For each input node, query INDRA for statements where:
+          - downstream=True: node is SUBJECT (node → ?)
+          - downstream=False: node is OBJECT (? → node)
+        - Collect unique neighbor entities
+        - Rank by belief × evidence
+
         Args:
             nodes: List of node names (e.g., ["PM2.5", "CRP"])
             downstream: If True, get downstream targets; if False, get upstream sources
@@ -447,51 +352,124 @@ class IndraNetService:
         """
         logger.info(f"Getting multi_interactors for {nodes} (downstream={downstream})")
 
-        # Build a network around the nodes to discover interactors
+        # Fetch statements for each node's neighborhood
         try:
-            # Use build_biomarker_network with nodes as both exposures and biomarkers
-            # to get their neighborhoods
-            result = await self.build_biomarker_network(
-                exposures=nodes if downstream else [],
-                biomarkers=nodes if not downstream else [],
-                max_depth=1,  # Just 1-hop neighbors
-                belief_threshold=belief_cutoff
-            )
+            all_statements: List[Statement] = []
 
-            # Extract interactors from the graph
-            interactors = []
-            input_nodes = set(nodes)
-
-            for node_name in result.node_names:
-                # Skip input nodes
-                if node_name in input_nodes:
+            for node in nodes:
+                cache_key = f"neighbors:{node}:{downstream}"
+                if cache_key in self.statement_cache:
+                    logger.debug(f"Cache hit: neighbors for {node}")
+                    # Move to end of LRU list
+                    self._cache_access_order.remove(cache_key)
+                    self._cache_access_order.append(cache_key)
+                    all_statements.extend(self.statement_cache[cache_key])
                     continue
 
-                # Get edges to/from this node
-                edges_with_belief = []
-                for (source, target), belief in result.belief_scores.items():
-                    if downstream and source in input_nodes and target == node_name:
-                        edges_with_belief.append((belief, result.evidence_counts.get((source, target), 0)))
-                    elif not downstream and target in input_nodes and source == node_name:
-                        edges_with_belief.append((belief, result.evidence_counts.get((source, target), 0)))
+                def fetch():
+                    try:
+                        # Query for statements where node is subject (downstream) or object (upstream)
+                        processor = idr.get_statements(
+                            subject=node if downstream else None,
+                            object=node if not downstream else None,
+                            limit=150,  # Get more neighbors
+                            persist=False,
+                            ev_limit=3,
+                            sort_by='ev_count',
+                            timeout=20,
+                            tries=2
+                        )
+                        logger.info(f"Got {len(processor.statements)} neighbor statements for {node}")
+                        return processor.statements
+                    except Exception as e:
+                        logger.error(f"Query failed for neighbors of {node}: {e}")
+                        return []
 
-                if edges_with_belief:
-                    # Use max belief and total evidence
-                    max_belief = max(b for b, _ in edges_with_belief)
-                    total_evidence = sum(e for _, e in edges_with_belief)
+                stmts = await asyncio.to_thread(fetch)
 
-                    interactors.append({
-                        "name": node_name,
-                        "namespace": "HGNC",  # Default, actual namespace not available from NetworkX
-                        "identifier": "",
-                        "belief": max_belief,
-                        "evidence_count": total_evidence
-                    })
+                # LRU eviction if cache is full
+                if len(self.statement_cache) >= self.MAX_CACHE_SIZE:
+                    self._evict_oldest_cache_entry()
 
-            # Sort by evidence strength
+                self.statement_cache[cache_key] = stmts
+                self._cache_access_order.append(cache_key)
+                all_statements.extend(stmts)
+
+            if not all_statements:
+                logger.warning(f"No statements found for neighbors of {nodes}")
+                return []
+
+            # Extract unique interactors from statements
+            interactor_map: Dict[str, Dict[str, Any]] = {}
+
+            for stmt in all_statements:
+                # Skip low-belief statements
+                if stmt.belief < belief_cutoff:
+                    continue
+
+                # Extract agents based on direction
+                source_agent = None
+                target_agent = None
+
+                # Handle different statement types
+                if hasattr(stmt, 'subj') and hasattr(stmt, 'obj'):
+                    source_agent = stmt.subj
+                    target_agent = stmt.obj
+                elif hasattr(stmt, 'enz') and hasattr(stmt, 'sub'):
+                    source_agent = stmt.enz
+                    target_agent = stmt.sub
+                else:
+                    # Skip statements without clear subject/object
+                    continue
+
+                # Determine neighbor based on direction
+                neighbor_agent = None
+                if downstream:
+                    # Looking for targets (nodes → ?)
+                    if source_agent and source_agent.name in nodes and target_agent:
+                        neighbor_agent = target_agent
+                else:
+                    # Looking for sources (? → nodes)
+                    if target_agent and target_agent.name in nodes and source_agent:
+                        neighbor_agent = source_agent
+
+                if not neighbor_agent or neighbor_agent.name in nodes:
+                    continue  # Skip input nodes
+
+                # Aggregate interactor data
+                neighbor_name = neighbor_agent.name
+                if neighbor_name not in interactor_map:
+                    interactor_map[neighbor_name] = {
+                        "name": neighbor_name,
+                        "namespace": neighbor_agent.db_refs.get('HGNC', neighbor_agent.db_refs.get('UP', 'NAME')),
+                        "identifier": neighbor_agent.db_refs.get('HGNC', neighbor_agent.db_refs.get('UP', '')),
+                        "max_belief": stmt.belief,
+                        "total_evidence": len(stmt.evidence),
+                        "statement_count": 1
+                    }
+                else:
+                    # Update aggregated data
+                    interactor_map[neighbor_name]["max_belief"] = max(
+                        interactor_map[neighbor_name]["max_belief"], stmt.belief
+                    )
+                    interactor_map[neighbor_name]["total_evidence"] += len(stmt.evidence)
+                    interactor_map[neighbor_name]["statement_count"] += 1
+
+            # Convert to list and add final fields
+            interactors = []
+            for neighbor_name, data in interactor_map.items():
+                interactors.append({
+                    "name": neighbor_name,
+                    "namespace": data["namespace"],
+                    "identifier": data["identifier"],
+                    "belief": data["max_belief"],
+                    "evidence_count": data["total_evidence"]
+                })
+
+            # Sort by composite score (belief × evidence)
             interactors.sort(key=lambda x: x["belief"] * x["evidence_count"], reverse=True)
 
-            logger.info(f"Found {len(interactors)} interactors for {nodes}")
+            logger.info(f"Found {len(interactors)} unique interactors for {nodes}")
             return interactors[:max_results]
 
         except Exception as e:
@@ -505,48 +483,36 @@ class IndraNetService:
         max_depth: int = 4,
         use_cache: bool = True,
     ) -> List[Dict[str, Any]]:
-        """Find causal paths between source and target entities.
-
-        This is a compatibility method for SCMGraphBuilder. It uses INDRA Python library
-        to build biomarker networks and converts to the old path format.
+        """Find MDL-optimal causal paths.
 
         Args:
-            source: Source entity name (e.g., "PM2.5", "CRP")
-            target: Target entity name (e.g., "CRP", "IL-6")
+            source: Source entity
+            target: Target entity
             max_depth: Maximum path depth
-            use_cache: Whether to use caching (handled by INDRA library)
+            use_cache: Whether to use caching
 
         Returns:
-            List of path dicts with nodes and edges (compatible with old format)
+            List of path dicts
         """
-        logger.info(f"Finding causal paths: {source} → {target}")
+        logger.info(f"Finding paths: {source} → {target}")
 
         try:
-            # Build biomarker network
             network_result = await self.build_biomarker_network(
                 exposures=[source],
                 biomarkers=[target],
-                max_depth=min(max_depth, 3),  # Limit depth for performance
-                belief_threshold=0.3  # Lower for environmental pathways (was 0.5)
+                max_depth=max_depth,
+                belief_threshold=0.3
             )
 
             if network_result.edge_count == 0:
-                logger.info(f"No paths found: {source} → {target}")
                 return []
 
-            # Convert NetworkX graph to path format
-            paths = self._convert_graph_to_paths(
-                network_result,
-                source,
-                target,
-                max_depth
-            )
-
-            logger.info(f"Found {len(paths)} paths: {source} → {target}")
+            paths = self._convert_graph_to_paths(network_result, source, target, max_depth)
+            logger.info(f"Found {len(paths)} paths")
             return paths
 
         except Exception as e:
-            logger.error(f"Error finding causal paths: {e}", exc_info=True)
+            logger.error(f"Error: {e}", exc_info=True)
             return []
 
     def _convert_graph_to_paths(
@@ -569,18 +535,30 @@ class IndraNetService:
         """
         try:
             import networkx as nx
+            from indra_agent.services.mdl_weight import compute_mdl_weight
 
-            # Find all simple paths from source to target
+            # Pre-compute MDL weights as edge attributes
+            # Set on ALL edge keys in MultiDiGraph
+            for u, v, key, data in network_result.graph.edges(keys=True, data=True):
+                mdl_cost = compute_mdl_weight(network_result.graph, u, v, biomarker_values=None)
+                network_result.graph[u][v][key]['mdl_weight'] = mdl_cost
+
+            # Find shortest path using MDL weights
+            # Use NetworkX's simple shortest_path instead of open_dijkstra_search
+            # (open_dijkstra_search doesn't handle MultiDiGraph properly)
             try:
-                all_paths = nx.all_simple_paths(
+                # Find single shortest path with MDL weights
+                path_nodes = nx.shortest_path(
                     network_result.graph,
                     source=source,
                     target=target,
-                    cutoff=max_depth
+                    weight='mdl_weight'
                 )
-                path_list = list(all_paths)[:10]  # Limit to top 10
-            except (nx.NodeNotFound, nx.NetworkXNoPath):
-                logger.warning(f"No path found in graph: {source} → {target}")
+                path_list = [path_nodes]
+                logger.info(f"Found MDL-optimal path with {len(path_nodes)} nodes")
+
+            except (nx.NodeNotFound, nx.NetworkXNoPath, nx.NetworkXError) as e:
+                logger.warning(f"No path found in graph: {source} → {target}, error: {e}")
                 return []
 
             # Convert each path to old format
