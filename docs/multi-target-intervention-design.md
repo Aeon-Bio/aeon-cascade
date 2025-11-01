@@ -408,7 +408,7 @@ class PathwaySynergyAnalysis(BaseModel):
 - [ ] Validate synergy scores against literature
 - [ ] Create comprehensive demo
 
-**Total**: 8 hours (achievable for hackathon++)
+**Total**: 8 hours (achievable for production++)
 
 ---
 

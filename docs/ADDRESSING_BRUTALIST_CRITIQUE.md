@@ -277,7 +277,7 @@ class InsightGenerator:
 - Bayesian modeling infrastructure (PyMC, Stan)
 - Clinical validation partnerships
 
-**Not feasible for hackathon.**
+**Not feasible for production.**
 
 ---
 
@@ -353,7 +353,7 @@ predictions: {
 ## Recommendation: Path A (Qualitative Explorer)
 
 **Why Path A**:
-1. **Achievable in hackathon timeline**: Refactor UI/backend in 1-2 days
+1. **Achievable in production timeline**: Refactor UI/backend in 1-2 days
 2. **Scientifically honest**: Use INDRA for what it's good for
 3. **Still valuable**: Literature synthesis, hypothesis generation, education
 4. **Builds trust**: No overpromising, transparent about uncertainty

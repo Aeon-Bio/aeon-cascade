@@ -58,7 +58,7 @@ class SupervisorAgent:
 
         # Initial routing
         if not current_agent:
-            return await self._initial_routing(state)
+            return await self._initial_routing(state, config)
 
         # After MeSH enrichment agent
         if current_agent == "mesh_enrichment":
@@ -69,11 +69,11 @@ class SupervisorAgent:
 
         # After INDRA agent
         if current_agent == "indra_query_agent":
-            return await self._after_indra_agent(state)
+            return await self._after_indra_agent(state, config)
 
         # After web researcher
         if current_agent == "web_researcher":
-            return await self._after_web_researcher(state)
+            return await self._after_web_researcher(state, config)
 
         # After intervention planner
         if current_agent == "intervention_planner":
@@ -82,17 +82,19 @@ class SupervisorAgent:
         # Default: end
         return {"next_agent": "END"}
 
-    async def _initial_routing(self, state: OverallState) -> Dict:
+    async def _initial_routing(self, state: OverallState, config: RunnableConfig) -> Dict:
         """Initial routing logic - always start with MeSH enrichment if configured.
 
         Args:
             state: Current state
+            config: Runnable configuration
 
         Returns:
             Routing decision
         """
         # Emit progress: Step 1 - Routing (3%)
-        emitter = state.get("progress_emitter")
+        # Get progress_emitter from config (not state - causes pickle errors)
+        emitter = config.get("configurable", {}).get("progress_emitter")
         logger.info(f"Supervisor _initial_routing: progress_emitter exists? {emitter is not None}")
         if emitter:
             async with emitter.step(
@@ -102,8 +104,6 @@ class SupervisorAgent:
                 phase="initialization",
             ):
                 pass  # Routing logic happens below
-        else:
-            logger.warning("No progress_emitter in state during supervisor routing!")
 
         # Check if this is an intervention query (explicit intent)
         query_intent = state.get("query", {}).get("intent")
@@ -148,7 +148,7 @@ Respond with ONLY the agent name: 'web_researcher' or 'indra_query_agent'"""),
             logger.info("LLM routing to indra_query_agent first (no MeSH enrichment)")
             return {"next_agent": "indra_query_agent"}
 
-    async def _after_indra_agent(self, state: OverallState) -> Dict:
+    async def _after_indra_agent(self, state: OverallState, config: RunnableConfig) -> Dict:
         """Handle state after INDRA agent execution.
 
         This method extracts tool results from ReAct agent messages and updates state.
@@ -156,6 +156,7 @@ Respond with ONLY the agent name: 'web_researcher' or 'indra_query_agent'"""),
 
         Args:
             state: Current state
+            config: Runnable configuration
 
         Returns:
             Routing decision and extracted state updates
@@ -207,14 +208,15 @@ Respond with ONLY the agent name: 'web_researcher' or 'indra_query_agent'"""),
 
         # We have everything, finalize
         logger.info("INDRA agent done, finalizing")
-        finalization = await self._finalize_response({**state, **state_updates})
+        finalization = await self._finalize_response({**state, **state_updates}, config)
         return {**state_updates, **finalization}
 
-    async def _after_web_researcher(self, state: OverallState) -> Dict:
+    async def _after_web_researcher(self, state: OverallState, config: RunnableConfig) -> Dict:
         """Handle state after web researcher execution.
 
         Args:
             state: Current state
+            config: Runnable configuration
 
         Returns:
             Routing decision
@@ -227,7 +229,7 @@ Respond with ONLY the agent name: 'web_researcher' or 'indra_query_agent'"""),
 
         # We have everything, finalize
         logger.info("Web researcher done, finalizing")
-        return await self._finalize_response(state)
+        return await self._finalize_response(state, config)
 
     async def _after_intervention_planner(self, state: OverallState) -> Dict:
         """Handle state after intervention planner execution.
@@ -250,11 +252,12 @@ Respond with ONLY the agent name: 'web_researcher' or 'indra_query_agent'"""),
 
         return {"next_agent": "END"}
 
-    async def _finalize_response(self, state: OverallState) -> Dict:
+    async def _finalize_response(self, state: OverallState, config: RunnableConfig) -> Dict:
         """Finalize the response with explanations using LLM.
 
         Args:
             state: Current state
+            config: Runnable configuration
 
         Returns:
             Final state update
@@ -262,7 +265,8 @@ Respond with ONLY the agent name: 'web_researcher' or 'indra_query_agent'"""),
         logger.info("Finalizing response with LLM-generated explanations")
 
         # Emit progress: Step 15 - Generating explanations (100%)
-        emitter = state.get("progress_emitter")
+        # Get progress_emitter from config (not state - causes pickle errors)
+        emitter = config.get("configurable", {}).get("progress_emitter")
         if emitter:
             async with emitter.step(
                 agent="supervisor",

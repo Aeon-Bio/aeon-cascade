@@ -695,8 +695,8 @@ class InterventionEngine:
     ) -> List[Dict]:
         """Compute prediction timeline with temporal dynamics.
 
-        For hackathon MVP, use linear interpolation from baseline to steady-state.
-        Post-hackathon: Replace with discrete-time dynamic Bayesian network.
+        For production MVP, use linear interpolation from baseline to steady-state.
+        Post-production: Replace with discrete-time dynamic Bayesian network.
         """
         # Get steady-state prediction
         predictions = self.intervene(interventions, target_nodes=[target_node])

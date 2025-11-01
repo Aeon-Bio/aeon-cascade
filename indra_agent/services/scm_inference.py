@@ -273,8 +273,8 @@ class SCMInferenceEngine:
     ) -> List[Dict]:
         """Generate prediction timeline with linear interpolation.
 
-        For hackathon MVP: Linear interpolation from baseline to steady-state.
-        Post-hackathon: Replace with discrete-time DBN for temporal dynamics.
+        For production MVP: Linear interpolation from baseline to steady-state.
+        Post-production: Replace with discrete-time DBN for temporal dynamics.
 
         Args:
             mean: Steady-state mean

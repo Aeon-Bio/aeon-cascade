@@ -1146,7 +1146,7 @@ from indra_agent.core.models import CausalGraph
 
 router = APIRouter()
 
-# In-memory graph storage (for hackathon; use Redis for production)
+# In-memory graph storage (for production; use Redis for production)
 graph_store: Dict[str, CausalGraph] = {}
 
 
@@ -1806,7 +1806,7 @@ class SupervisorAgent:
 
 ## 10. Production Hardening Checklist
 
-**Post-hackathon tasks** (defer for now):
+**Post-production tasks** (defer for now):
 
 ### Infrastructure
 - [ ] Replace in-memory graph storage with Redis

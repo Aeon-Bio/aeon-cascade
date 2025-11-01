@@ -185,8 +185,8 @@ async def _mesh_agent_node(state: OverallState, config: RunnableConfig) -> Dict:
         model_kwargs={"temperature": MESH_ENRICHMENT_CONFIG["temperature"]},
     )
 
-    # Get progress emitter from state
-    progress_emitter = state.get("progress_emitter")
+    # Get progress emitter from config (not state - causes pickle errors)
+    progress_emitter = config.get("configurable", {}).get("progress_emitter")
 
     # Get MeSH tools with progress emitter
     mesh_tools = create_mesh_tools(progress_emitter=progress_emitter)

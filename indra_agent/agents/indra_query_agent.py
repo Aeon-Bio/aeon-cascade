@@ -459,11 +459,9 @@ async def _indra_agent_node(state: OverallState, config: RunnableConfig) -> Dict
         model_kwargs={"temperature": agent_config.temperature},
     )
 
-    # Get progress emitter from state
-    progress_emitter = state.get("progress_emitter")
+    # Get progress emitter from config (not state - causes pickle errors)
+    progress_emitter = config.get("configurable", {}).get("progress_emitter")
     logger.info(f"INDRA agent _indra_agent_node: progress_emitter exists? {progress_emitter is not None}")
-    if not progress_emitter:
-        logger.warning("No progress_emitter in state during INDRA agent execution!")
 
     # Get INDRA tools with progress emitter
     indra_tools = create_indra_tools(progress_emitter=progress_emitter)

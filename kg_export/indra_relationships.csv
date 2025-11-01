@@ -1,0 +1,88 @@
+source_id,target_id,relationship_type,effect_type,belief_score,evidence_count,statement_type,papers
+CORTISOL,IL17A,decreases,decreases,0.950,2,DecreaseAmount,33476690;unknown
+CORTISOL,IL1B,increases,increases,0.950,2,IncreaseAmount,33476690;unknown
+IL17A,TNF,increases,increases,0.950,2,IncreaseAmount,unknown;unknown
+IL17A,IL1B,increases,increases,0.950,2,IncreaseAmount,unknown;unknown
+IL17A,IL6,increases,increases,0.990,6,IncreaseAmount,unknown;unknown;unknown;unknown;unknown
+3,3',5-TRIIODO-L-THYRONINE,IL17A,decreases,decreases,0.950,2,DecreaseAmount,33476690;unknown
+3,3',5-TRIIODO-L-THYRONINE,IL1B,increases,increases,0.950,2,IncreaseAmount,33476690;unknown
+SODIUM ARSENITE,IRS1,decreases,decreases,0.982,3,DecreaseAmount,33743404;unknown;unknown
+SODIUM ARSENITE,IL1B,increases,increases,0.950,2,IncreaseAmount,unknown;34920032
+CHLORPYRIFOS,IL6,decreases,decreases,0.790,1,DecreaseAmount,unknown
+IL6,CRP,increases,increases,0.990,8,IncreaseAmount,unknown;unknown;unknown;unknown;unknown
+IL6,IL17A,increases,increases,0.950,2,IncreaseAmount,16906166;16906167
+IL6,IL1B,increases,increases,0.790,1,IncreaseAmount,unknown
+IL6,IL6,increases,increases,0.790,1,IncreaseAmount,unknown
+3-ISOBUTYL-1-METHYL-7H-XANTHINE,TNF,decreases,decreases,0.950,2,DecreaseAmount,31596606;unknown
+3-ISOBUTYL-1-METHYL-7H-XANTHINE,IL17A,decreases,decreases,0.950,2,DecreaseAmount,33476690;unknown
+3-ISOBUTYL-1-METHYL-7H-XANTHINE,IL6,decreases,decreases,0.790,1,DecreaseAmount,28628672
+3-ISOBUTYL-1-METHYL-7H-XANTHINE,IL1B,increases,increases,0.982,3,IncreaseAmount,33476690;unknown;28628672
+TNF,IL1B,decreases,decreases,0.990,34,DecreaseAmount,unknown;unknown;unknown;unknown;unknown
+TNF,IL6,decreases,decreases,0.990,90,DecreaseAmount,unknown;unknown;unknown;unknown;unknown
+TNF,TNF,increases,increases,0.990,7,IncreaseAmount,unknown;19549798;unknown;unknown;unknown
+TNF,CRP,increases,increases,0.790,1,IncreaseAmount,unknown
+DEXAMETHASONE,TNF,decreases,decreases,0.950,2,DecreaseAmount,31596606;unknown
+DEXAMETHASONE,IL17A,decreases,decreases,0.950,2,DecreaseAmount,33476690;unknown
+DEXAMETHASONE,IL6,decreases,decreases,0.790,1,DecreaseAmount,28628672
+DEXAMETHASONE,IL1B,increases,increases,0.982,3,IncreaseAmount,33476690;unknown;28628672
+INDOMETACIN,IL6,decreases,decreases,0.790,1,DecreaseAmount,28628672
+INDOMETACIN,IL1B,increases,increases,0.790,1,IncreaseAmount,28628672
+ROSIGLITAZONE,TNF,decreases,decreases,0.950,2,DecreaseAmount,31596606;unknown
+ROSIGLITAZONE,IL17A,decreases,decreases,0.950,2,DecreaseAmount,33476690;unknown
+ROSIGLITAZONE,IL1B,increases,increases,0.950,2,IncreaseAmount,33476690;unknown
+N-METHYL-4-PHENYLPYRIDINIUM,IRS1,decreases,decreases,0.790,1,DecreaseAmount,unknown
+SIMVASTATIN,IL17A,decreases,decreases,0.790,1,DecreaseAmount,unknown
+TF,IL17A,decreases,decreases,0.950,2,DecreaseAmount,33476690;unknown
+TF,IL1B,increases,increases,0.950,2,IncreaseAmount,33476690;unknown
+IL1B,TNF,decreases,decreases,0.990,23,DecreaseAmount,unknown;unknown;unknown;unknown;unknown
+IL1B,CRP,increases,increases,0.990,11,IncreaseAmount,unknown;unknown;unknown;unknown;unknown
+IL1B,IL1B,increases,increases,0.982,3,IncreaseAmount,21878375;unknown;unknown
+IL1B,IL6,increases,increases,0.990,46,IncreaseAmount,unknown;unknown;unknown;unknown;unknown
+INS,TNF,decreases,decreases,0.950,2,DecreaseAmount,31596606;unknown
+INS,IL17A,decreases,decreases,0.950,2,DecreaseAmount,33476690;unknown
+INS,IL6,decreases,decreases,0.790,1,DecreaseAmount,28628672
+INS,IRS1,decreases,decreases,0.990,9,DecreaseAmount,33743404;unknown;unknown;unknown;unknown
+INS,IL1B,increases,increases,0.990,5,IncreaseAmount,33476690;unknown;unknown;28628672;34920032
+MAPK9,IFNG,decreases,decreases,0.950,2,DecreaseAmount,11927626;16237086
+IFNG,TNF,increases,increases,0.990,39,IncreaseAmount,unknown;unknown;unknown;25352548;34673087
+IFNG,IL1B,increases,increases,0.990,16,IncreaseAmount,29718165;15222974;21396992;29501766;30768972
+IFNG,IL6,increases,increases,0.990,16,IncreaseAmount,34673087;unknown;unknown;unknown;29718165
+RELA,TNF,decreases,decreases,0.790,1,DecreaseAmount,unknown
+RELA,IL17A,increases,increases,0.990,5,IncreaseAmount,16200070;15657292;12417590;16622035;16200068
+RELA,IL6,increases,increases,0.790,1,IncreaseAmount,8290595
+DIOXYGEN,TNF,increases,increases,0.982,3,IncreaseAmount,unknown;23406266;unknown
+HEXADECANOIC ACID,TNF,increases,increases,0.790,1,IncreaseAmount,unknown
+HYDROGEN PEROXIDE,TNF,increases,increases,0.790,1,IncreaseAmount,unknown
+LIPOPOLYSACCHARIDE,TNF,increases,increases,0.990,35,IncreaseAmount,unknown;unknown;16488514;36281492;27224998
+LIPOPOLYSACCHARIDE,IL1B,increases,increases,0.990,13,IncreaseAmount,29718165;15222974;21396992;29501766;30768972
+LIPOPOLYSACCHARIDE,IL6,increases,increases,0.990,15,IncreaseAmount,unknown;34673087;29718165;15779068;29501766
+GLUCOSE,TNF,increases,increases,0.950,2,IncreaseAmount,unknown;unknown
+HISTAMINE,IL6,increases,increases,0.790,1,IncreaseAmount,unknown
+KYNURENIC ACID,IL6,increases,increases,0.950,2,IncreaseAmount,unknown;unknown
+SM-164,TNF,increases,increases,0.790,1,IncreaseAmount,unknown
+BIS(2-CHLOROETHYL) SULFIDE,IL6,increases,increases,0.790,1,IncreaseAmount,unknown
+CYCLOHEXIMIDE,IL6,increases,increases,0.950,2,IncreaseAmount,unknown;unknown
+2,3,7,8-TETRACHLORODIBENZODIOXINE,IL6,increases,increases,0.990,7,IncreaseAmount,unknown;unknown;unknown;unknown;unknown
+METHYLMERCURY CHLORIDE,IL6,increases,increases,0.950,2,IncreaseAmount,unknown;unknown
+BENZO[A]PYRENE,IL6,increases,increases,0.790,1,IncreaseAmount,23396138
+FLUORANTHENE,IL6,increases,increases,0.790,1,IncreaseAmount,unknown
+SILVER MOLECULAR ENTITY,IL1B,increases,increases,0.790,1,IncreaseAmount,30096344
+GOLD MOLECULAR ENTITY,IL1B,increases,increases,0.790,1,IncreaseAmount,30096344
+GOLD MOLECULAR ENTITY,IL6,increases,increases,0.790,1,IncreaseAmount,30096344
+3-METHYLCHOLANTHRENE,IL6,increases,increases,0.790,1,IncreaseAmount,23396138
+4,4'-SULFONYLDIPHENOL,IL1B,increases,increases,0.790,1,IncreaseAmount,28628672
+PHORBOL 13-ACETATE 12-MYRISTATE,IL1B,increases,increases,0.790,1,IncreaseAmount,unknown
+MAGNETITE NANOPARTICLE,IL1B,increases,increases,0.790,1,IncreaseAmount,30096344
+MAGNETITE NANOPARTICLE,IL6,increases,increases,0.790,1,IncreaseAmount,30096344
+TETRAPHENE,IL6,increases,increases,0.988,4,IncreaseAmount,23396138;unknown;unknown;unknown
+CRP,TNF,increases,increases,0.790,1,IncreaseAmount,unknown
+NFKB1,IL17A,increases,increases,0.990,5,IncreaseAmount,16200070;15657292;12417590;16622035;16200068
+NFKB1,TNF,increases,increases,0.790,1,IncreaseAmount,unknown
+NFKB1,IL6,increases,increases,0.950,2,IncreaseAmount,unknown;8290595
+NFKBIA,IL17A,increases,increases,0.990,5,IncreaseAmount,16200070;15657292;12417590;16622035;16200068
+LIPOPOLYSACCHARIDE, ESCHERICHIA COLI O111 B4,TNF,increases,increases,0.950,2,IncreaseAmount,19549798;unknown
+LIPOPOLYSACCHARIDE, ESCHERICHIA COLI O111 B4,IL1B,increases,increases,0.988,4,IncreaseAmount,19549798;unknown;unknown;34920032
+VEHICLE EMISSIONS,TNF,increases,increases,0.790,1,IncreaseAmount,27224998
+TOBACCO SMOKE POLLUTION,IL1B,increases,increases,0.790,1,IncreaseAmount,unknown
+TOBACCO SMOKE POLLUTION,IL6,increases,increases,0.790,1,IncreaseAmount,unknown
+PARTICULATE MATTER,TNF,increases,increases,0.790,1,IncreaseAmount,27224998

@@ -64,8 +64,8 @@ class OverallState(AgentState):
     next_agent: Annotated[str, replace_reducer] = ""
     current_agent: Annotated[str, replace_reducer] = ""
 
-    # Progress tracking (with reducer to handle concurrent updates)
-    progress_emitter: Annotated[Optional[ProgressEmitter], replace_reducer] = None
+    # Progress tracking: progress_emitter passed via config["configurable"]
+    # NOT in state (causes pickle errors when deep copied by LangGraph)
 
     # ReAct agent internal state (from create_react_agent)
     remaining_steps: int = 10

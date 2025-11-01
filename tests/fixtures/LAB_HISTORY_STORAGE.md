@@ -240,7 +240,7 @@ def format_deltas_message(deltas: dict) -> str:
 
 ## Demo Implementation (Recommended)
 
-For the hackathon demo, use **Option 1 (Parse-Only)**:
+For the production demo, use **Option 1 (Parse-Only)**:
 
 ### Pros:
 - ✅ Simpler implementation

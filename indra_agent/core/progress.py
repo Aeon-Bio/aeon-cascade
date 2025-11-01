@@ -7,6 +7,7 @@ during long-running workflows, enabling real-time user feedback via SSE.
 import asyncio
 import logging
 import time
+from datetime import datetime, timezone
 from contextlib import asynccontextmanager
 from typing import AsyncGenerator, Callable, Any
 from pydantic import BaseModel
@@ -29,6 +30,54 @@ class ProgressUpdate(BaseModel):
     narrative: dict[str, Any] | None = None  # Rich discovery details for frontend display
 
 
+class LogMessage(BaseModel):
+    """Backend log message for real-time streaming."""
+
+    timestamp: str  # ISO timestamp
+    level: str  # INFO | WARNING | ERROR | DEBUG
+    logger: str  # Logger name (e.g., indra_agent.services.indranet_service)
+    message: str  # Log message text
+
+
+class SSELoggingHandler(logging.Handler):
+    """Custom logging handler that emits logs via SSE."""
+
+    def __init__(self, queue: asyncio.Queue, level=logging.INFO):
+        """Initialize SSE logging handler.
+
+        Args:
+            queue: Async queue to send log messages
+            level: Minimum log level to capture
+        """
+        super().__init__(level)
+        self.queue = queue
+
+    def emit(self, record: logging.LogRecord):
+        """Emit log record to SSE queue.
+
+        Args:
+            record: Log record to emit
+        """
+        try:
+            log_msg = LogMessage(
+                timestamp=datetime.now(timezone.utc).isoformat(),
+                level=record.levelname,
+                logger=record.name,
+                message=record.getMessage(),
+            )
+            # Put in queue (non-blocking, will be sent by SSE stream)
+            # Use call_soon_threadsafe since logging can happen from any thread
+            try:
+                loop = asyncio.get_event_loop()
+                loop.call_soon_threadsafe(self.queue.put_nowait, ("log", log_msg))
+            except (asyncio.QueueFull, RuntimeError):
+                # Drop logs if queue is full or no event loop (avoid blocking)
+                pass
+        except Exception:
+            # Never crash on logging errors
+            pass  # Don't call handleError to avoid recursion
+
+
 class ProgressEmitter:
     """Emit progress updates during workflow execution.
 
@@ -42,15 +91,52 @@ class ProgressEmitter:
         # Callback receives ProgressUpdate at start and completion of each step
     """
 
-    def __init__(self, callback: Callable[[ProgressUpdate], Any] | None = None):
+    def __init__(
+        self,
+        callback: Callable[[ProgressUpdate], Any] | None = None,
+        log_queue: asyncio.Queue | None = None,
+    ):
         """Initialize progress emitter.
 
         Args:
             callback: Async function called with ProgressUpdate on each emission
+            log_queue: Optional queue for streaming backend logs via SSE
         """
         self.callback = callback
         self.step_counter = 0
         self.start_time = time.time()
+        self.log_queue = log_queue
+        self.log_handler: SSELoggingHandler | None = None
+
+        # If log queue provided, attach logging handler
+        if self.log_queue:
+            self._attach_log_handler()
+
+    def _attach_log_handler(self):
+        """Attach SSE logging handler to root logger."""
+        if not self.log_queue:
+            return
+
+        # Create handler
+        self.log_handler = SSELoggingHandler(self.log_queue, level=logging.INFO)
+
+        # Format logs
+        formatter = logging.Formatter("%(name)s - %(message)s")
+        self.log_handler.setFormatter(formatter)
+
+        # Attach to root logger (captures ALL logs)
+        root_logger = logging.getLogger()
+        root_logger.addHandler(self.log_handler)
+        root_logger.setLevel(logging.INFO)
+
+        logger.info("SSE log streaming enabled")
+
+    def _detach_log_handler(self):
+        """Detach SSE logging handler from root logger."""
+        if self.log_handler:
+            root_logger = logging.getLogger()
+            root_logger.removeHandler(self.log_handler)
+            logger.info("SSE log streaming disabled")
 
     @asynccontextmanager
     async def step(

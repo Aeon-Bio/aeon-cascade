@@ -606,6 +606,12 @@ class IndraNetService:
                         network_result.statements, src, tgt
                     )
 
+                    # FIX: IndraNetAssembler doesn't populate evidence_count on edges
+                    # Use PMID count as fallback (underestimate, but better than 0)
+                    if evidence_count == 0 and pmids:
+                        evidence_count = len(pmids)
+                        logger.debug(f"Using PMID count for evidence: {src}→{tgt} = {evidence_count}")
+
                     edges.append({
                         "source": src,
                         "target": tgt,

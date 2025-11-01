@@ -1,0 +1,49 @@
+entity_id	entity_name	entity_type	ontology_database	description
+CORTISOL	CORTISOL	gene	HGNC	Gene with 0 upstream regulators and 2 downstream targets in INDRA bio-ontology
+IL17A	IL17A	biomarker	HGNC/MESH	Clinical biomarker with 12 upstream regulators and 3 downstream targets in INDRA bio-ontology
+3,3',5-TRIIODO-L-THYRONINE	3,3',5-TRIIODO-L-THYRONINE	molecular	INDRA	Molecular entity with 0 upstream regulators and 2 downstream targets in INDRA bio-ontology
+SODIUM ARSENITE	SODIUM ARSENITE	molecular	INDRA	Molecular entity with 0 upstream regulators and 2 downstream targets in INDRA bio-ontology
+IRS1	IRS1	gene	HGNC	Gene with 3 upstream regulators and 0 downstream targets in INDRA bio-ontology
+CHLORPYRIFOS	CHLORPYRIFOS	drug	MESH/DrugBank	Pharmaceutical agent with 0 upstream regulators and 1 downstream targets in INDRA bio-ontology
+IL6	IL6	biomarker	HGNC/MESH	Clinical biomarker with 26 upstream regulators and 4 downstream targets in INDRA bio-ontology
+3-ISOBUTYL-1-METHYL-7H-XANTHINE	3-ISOBUTYL-1-METHYL-7H-XANTHINE	molecular	INDRA	Molecular entity with 0 upstream regulators and 4 downstream targets in INDRA bio-ontology
+TNF	TNF	biomarker	HGNC/MESH	Clinical biomarker with 20 upstream regulators and 4 downstream targets in INDRA bio-ontology
+DEXAMETHASONE	DEXAMETHASONE	drug	MESH/DrugBank	Pharmaceutical agent with 0 upstream regulators and 4 downstream targets in INDRA bio-ontology
+INDOMETACIN	INDOMETACIN	drug	MESH/DrugBank	Pharmaceutical agent with 0 upstream regulators and 2 downstream targets in INDRA bio-ontology
+ROSIGLITAZONE	ROSIGLITAZONE	drug	MESH/DrugBank	Pharmaceutical agent with 0 upstream regulators and 3 downstream targets in INDRA bio-ontology
+N-METHYL-4-PHENYLPYRIDINIUM	N-METHYL-4-PHENYLPYRIDINIUM	molecular	INDRA	Molecular entity with 0 upstream regulators and 1 downstream targets in INDRA bio-ontology
+SIMVASTATIN	SIMVASTATIN	molecular	INDRA	Molecular entity with 0 upstream regulators and 1 downstream targets in INDRA bio-ontology
+TF	TF	gene	HGNC	Gene with 0 upstream regulators and 2 downstream targets in INDRA bio-ontology
+IL1B	IL1B	biomarker	HGNC/MESH	Clinical biomarker with 22 upstream regulators and 4 downstream targets in INDRA bio-ontology
+INS	INS	gene	HGNC	Gene with 0 upstream regulators and 5 downstream targets in INDRA bio-ontology
+MAPK9	MAPK9	gene	HGNC	Gene with 0 upstream regulators and 1 downstream targets in INDRA bio-ontology
+IFNG	IFNG	biomarker	HGNC/MESH	Clinical biomarker with 1 upstream regulators and 3 downstream targets in INDRA bio-ontology
+RELA	RELA	gene	HGNC	Gene with 0 upstream regulators and 3 downstream targets in INDRA bio-ontology
+DIOXYGEN	DIOXYGEN	gene	HGNC	Gene with 0 upstream regulators and 1 downstream targets in INDRA bio-ontology
+HEXADECANOIC ACID	HEXADECANOIC ACID	molecular	INDRA	Molecular entity with 0 upstream regulators and 1 downstream targets in INDRA bio-ontology
+HYDROGEN PEROXIDE	HYDROGEN PEROXIDE	chemical	CHEBI/MESH	Chemical compound with 0 upstream regulators and 1 downstream targets in INDRA bio-ontology
+LIPOPOLYSACCHARIDE	LIPOPOLYSACCHARIDE	chemical	CHEBI/MESH	Chemical compound with 0 upstream regulators and 3 downstream targets in INDRA bio-ontology
+GLUCOSE	GLUCOSE	gene	HGNC	Gene with 0 upstream regulators and 1 downstream targets in INDRA bio-ontology
+HISTAMINE	HISTAMINE	gene	HGNC	Gene with 0 upstream regulators and 1 downstream targets in INDRA bio-ontology
+KYNURENIC ACID	KYNURENIC ACID	molecular	INDRA	Molecular entity with 0 upstream regulators and 1 downstream targets in INDRA bio-ontology
+SM-164	SM-164	gene	HGNC	Gene with 0 upstream regulators and 1 downstream targets in INDRA bio-ontology
+BIS(2-CHLOROETHYL) SULFIDE	BIS(2-CHLOROETHYL) SULFIDE	molecular	INDRA	Molecular entity with 0 upstream regulators and 1 downstream targets in INDRA bio-ontology
+CYCLOHEXIMIDE	CYCLOHEXIMIDE	molecular	INDRA	Molecular entity with 0 upstream regulators and 1 downstream targets in INDRA bio-ontology
+2,3,7,8-TETRACHLORODIBENZODIOXINE	2,3,7,8-TETRACHLORODIBENZODIOXINE	molecular	INDRA	Molecular entity with 0 upstream regulators and 1 downstream targets in INDRA bio-ontology
+METHYLMERCURY CHLORIDE	METHYLMERCURY CHLORIDE	molecular	INDRA	Molecular entity with 0 upstream regulators and 1 downstream targets in INDRA bio-ontology
+BENZO[A]PYRENE	BENZO[A]PYRENE	chemical	CHEBI/MESH	Chemical compound with 0 upstream regulators and 1 downstream targets in INDRA bio-ontology
+FLUORANTHENE	FLUORANTHENE	molecular	INDRA	Molecular entity with 0 upstream regulators and 1 downstream targets in INDRA bio-ontology
+SILVER MOLECULAR ENTITY	SILVER MOLECULAR ENTITY	chemical	CHEBI/MESH	Chemical compound with 0 upstream regulators and 1 downstream targets in INDRA bio-ontology
+GOLD MOLECULAR ENTITY	GOLD MOLECULAR ENTITY	chemical	CHEBI/MESH	Chemical compound with 0 upstream regulators and 2 downstream targets in INDRA bio-ontology
+3-METHYLCHOLANTHRENE	3-METHYLCHOLANTHRENE	molecular	INDRA	Molecular entity with 0 upstream regulators and 1 downstream targets in INDRA bio-ontology
+4,4'-SULFONYLDIPHENOL	4,4'-SULFONYLDIPHENOL	molecular	INDRA	Molecular entity with 0 upstream regulators and 1 downstream targets in INDRA bio-ontology
+PHORBOL 13-ACETATE 12-MYRISTATE	PHORBOL 13-ACETATE 12-MYRISTATE	molecular	INDRA	Molecular entity with 0 upstream regulators and 1 downstream targets in INDRA bio-ontology
+MAGNETITE NANOPARTICLE	MAGNETITE NANOPARTICLE	chemical	CHEBI/MESH	Chemical compound with 0 upstream regulators and 2 downstream targets in INDRA bio-ontology
+TETRAPHENE	TETRAPHENE	gene	HGNC	Gene with 0 upstream regulators and 1 downstream targets in INDRA bio-ontology
+CRP	CRP	biomarker	HGNC/MESH	Clinical biomarker with 3 upstream regulators and 1 downstream targets in INDRA bio-ontology
+NFKB1	NFKB1	gene	HGNC	Gene with 0 upstream regulators and 3 downstream targets in INDRA bio-ontology
+NFKBIA	NFKBIA	gene	HGNC	Gene with 0 upstream regulators and 1 downstream targets in INDRA bio-ontology
+LIPOPOLYSACCHARIDE, ESCHERICHIA COLI O111 B4	LIPOPOLYSACCHARIDE, ESCHERICHIA COLI O111 B4	chemical	CHEBI/MESH	Chemical compound with 0 upstream regulators and 2 downstream targets in INDRA bio-ontology
+VEHICLE EMISSIONS	VEHICLE EMISSIONS	molecular	INDRA	Molecular entity with 0 upstream regulators and 1 downstream targets in INDRA bio-ontology
+TOBACCO SMOKE POLLUTION	TOBACCO SMOKE POLLUTION	molecular	INDRA	Molecular entity with 0 upstream regulators and 2 downstream targets in INDRA bio-ontology
+PARTICULATE MATTER	PARTICULATE MATTER	molecular	INDRA	Molecular entity with 0 upstream regulators and 1 downstream targets in INDRA bio-ontology

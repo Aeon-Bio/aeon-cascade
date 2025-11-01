@@ -87,13 +87,21 @@ class INDRAAgentClient:
                 "metadata": {},
                 "next_agent": "",
                 "current_agent": "",
-                "progress_emitter": progress_emitter,  # Pass to agents
+                # DON'T pass progress_emitter in state (causes pickle errors)
+            }
+
+            # Pass progress_emitter via RunnableConfig (supports non-serializable objects)
+            config = {
+                "recursion_limit": 50,
+                "configurable": {
+                    "progress_emitter": progress_emitter,  # Safe: not deep copied
+                }
             }
 
             # Run graph with timeout and 50-iteration limit to prevent indefinite hangs
             try:
                 final_state = await asyncio.wait_for(
-                    self.graph.ainvoke(initial_state, {"recursion_limit": 50}),
+                    self.graph.ainvoke(initial_state, config),
                     timeout=timeout
                 )
 

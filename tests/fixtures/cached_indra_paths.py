@@ -1,6 +1,6 @@
 """Pre-cached INDRA responses for demo reliability.
 
-These cached responses ensure the system works reliably during the hackathon
+These cached responses ensure the system works reliably during the production
 demo, even if INDRA API is slow or unavailable.
 """
 

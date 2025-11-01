@@ -275,14 +275,14 @@ async def stream_progress(request_id: str, request: Request):
     async def event_generator():
         """Generate SSE events from workflow execution."""
         # Create progress queue for thread-safe updates
-        progress_queue = asyncio.Queue()
+        progress_queue = asyncio.Queue(maxsize=1000)  # Larger queue for logs
 
         async def progress_callback(update: ProgressUpdate):
             """Callback invoked by ProgressEmitter."""
             await progress_queue.put(("progress", update))
 
-        # Create emitter
-        emitter = ProgressEmitter(callback=progress_callback)
+        # Create emitter with log streaming
+        emitter = ProgressEmitter(callback=progress_callback, log_queue=progress_queue)
 
         # Run workflow with progress in background task
         async def run_workflow():
@@ -345,6 +345,9 @@ async def stream_progress(request_id: str, request: Request):
                     total_duration_ms=emitter.total_elapsed_ms(),
                 )
                 await progress_queue.put(("complete", error_complete))
+            finally:
+                # Cleanup log handler
+                emitter._detach_log_handler()
 
         # Start workflow task
         workflow_task = asyncio.create_task(run_workflow())
@@ -374,6 +377,12 @@ async def stream_progress(request_id: str, request: Request):
                             f"({data.status})"
                         )
                         break
+                    elif event_type == "log":
+                        # Send backend log event
+                        yield {
+                            "event": "log",
+                            "data": data.model_dump_json(),
+                        }
                     else:  # progress
                         yield {
                             "event": "progress",

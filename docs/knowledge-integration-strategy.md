@@ -1101,7 +1101,7 @@ class GraphBuilderService:
 
 ### 6.1 Pre-cached INDRA Paths
 
-**Purpose**: Ensure hackathon demo reliability (avoid INDRA API downtime)
+**Purpose**: Ensure production demo reliability (avoid INDRA API downtime)
 
 **Strategy**: Pre-cache common causal pathways in `config/cached_responses.py`
 

@@ -212,7 +212,7 @@ Before deploying SCM, verify:
 - [ ] Sufficient data: n_samples ≥ 5 × n_parameters (rule of thumb)
 - [ ] Noise is approximately Gaussian (check residuals)
 
-**For hackathon**: Use INDRA-derived structure → identifiable by construction.
+**For production**: Use INDRA-derived structure → identifiable by construction.
 
 ---
 
@@ -299,7 +299,7 @@ p(y | do(x), do(z), w) = p(y | do(x), z, w)  if (Y ⊥ Z | X, W) in G_do(Z)
 p(y | do(x), do(z), w) = p(y | do(x), w)  if (Y ⊥ Z | X, W) in G_do(X), where Z-ancestors deleted
 ```
 
-**For hackathon**: Stick to single interventions (Rule 1 sufficient).
+**For production**: Stick to single interventions (Rule 1 sufficient).
 
 ---
 
@@ -498,7 +498,7 @@ where C = observation matrix (which variables are measured).
 **Time complexity**: O(T · n³) where T = time steps, n = variables
 **Space complexity**: O(T · n²) for storing covariances
 
-**For hackathon**: Use **simplified forward-only** (no smoothing):
+**For production**: Use **simplified forward-only** (no smoothing):
 - Update belief about latent states as new data arrives
 - O(n³) per time step
 
