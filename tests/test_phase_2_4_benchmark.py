@@ -87,7 +87,8 @@ async def benchmark_query(
         # Phase 1: Direct paths
         # Phase 2: Mediated paths (finds IL1B → NFKB1 → IL6 style connections)
         # Phase 3: Biological priors (fallback)
-        paths = await scm_builder.build_scm_graph(
+        # INTERFACE CONTRACT: Returns Tuple[List[Dict], Optional[FailureMode]]
+        paths, failure_mode = await scm_builder.build_scm_graph(
             sources=[source],
             targets=[target],
             max_depth=4,
@@ -99,6 +100,10 @@ async def benchmark_query(
         tracemalloc.stop()
 
         peak_memory_mb = peak_mem / 1024 / 1024
+
+        # Log failure mode if present (paths may be empty with explanation)
+        if failure_mode:
+            logger.warning(f"Query completed with failure mode: {failure_mode.reason}")
 
         logger.info(f"✅ Success: {len(paths)} paths in {elapsed:.2f}s, {peak_memory_mb:.1f} MB")
 

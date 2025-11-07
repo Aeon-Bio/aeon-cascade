@@ -1,0 +1,19 @@
+# Local Ontology Query System Dependencies
+
+# Graph database (Cypher queries)
+neo4j>=5.15.0  # Neo4j driver compatible with Memgraph
+
+# Semantic search with PubMedBERT embeddings
+lightrag-hku>=0.0.1
+
+# NLP and embeddings
+transformers>=4.35.0
+torch>=2.0.0
+sentence-transformers>=2.2.0
+
+# Data processing
+pandas>=2.0.0
+numpy>=1.24.0
+
+# Async support
+httpx>=0.25.0

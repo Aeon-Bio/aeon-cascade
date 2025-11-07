@@ -41,12 +41,18 @@ def create_indra_tools(progress_emitter=None, cache_namespace=None):
     logger.info(f"Creating INDRA tools with cache namespace: {cache_namespace}")
 
     # Initialize services (shared across tool calls)
-    # Using IndraNetService for comprehensive biomarker network building
-    indra_service = IndraNetService()
-    from indra_agent.services.writer_kg_service import WriterKGService
+    # Create local ontology and grounding service once
+    from indra_agent.services.local_ontology_adapter import LocalOntologyAdapter
     from indra_agent.services.scm_graph_builder import SCMGraphBuilder
-    writer_kg_service = WriterKGService()
-    grounding_service = GroundingService(writer_kg_service=writer_kg_service, indra_service=None)  # No INDRA service needed for grounding
+
+    local_ontology = LocalOntologyAdapter()
+    # Note: local_ontology.initialize() will be called lazily on first use
+    grounding_service = GroundingService(local_ontology=local_ontology)
+
+    # Pass grounding_service to IndraNetService (dependency injection)
+    # This ensures all synonym expansion uses local ontology, not Writer KG
+    indra_service = IndraNetService(grounding_service=grounding_service)
+
     graph_builder = GraphBuilderService()
     scm_builder = SCMGraphBuilder(indra_service)
 
@@ -325,7 +331,8 @@ def create_indra_tools(progress_emitter=None, cache_namespace=None):
                 logger.info(f"Using {len(user_biomarkers)} user-tracked biomarkers: {user_biomarkers}")
 
             # Build SCM graph via iterative discovery (progress emitted from within)
-            paths = await scm_builder.build_scm_graph(
+            # INTERFACE CONTRACT: Returns Tuple[List[Dict], Optional[FailureMode]]
+            paths, failure_mode = await scm_builder.build_scm_graph(
                 sources=sources,
                 targets=targets,
                 user_biomarkers=user_biomarkers,
@@ -336,9 +343,27 @@ def create_indra_tools(progress_emitter=None, cache_namespace=None):
             )
 
             if not paths:
+                # Use transparent failure mode if available
+                error_message = "No paths found connecting sources to targets (tried INDRA + priors)"
+                if failure_mode:
+                    # Include failure mode explanation
+                    error_message = failure_mode.to_user_message()
+
                 return json.dumps({
                     "status": "error",
-                    "error": "No paths found connecting sources to targets (tried INDRA + priors)"
+                    "error": error_message,
+                    "failure_reason": failure_mode.reason.value if failure_mode else None,
+                    "discovery_attempts": [
+                        {
+                            "phase": attempt.phase,
+                            "query": attempt.query,
+                            "result": attempt.result,
+                            "duration_ms": attempt.duration_ms,
+                            "success": attempt.success
+                        }
+                        for attempt in (failure_mode.discovery_attempts if failure_mode else [])
+                    ],
+                    "suggestions": failure_mode.suggestions if failure_mode else []
                 })
 
             # Rank paths

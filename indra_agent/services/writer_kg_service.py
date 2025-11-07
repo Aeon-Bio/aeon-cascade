@@ -206,6 +206,224 @@ class WriterKGService:
             "synonyms": self._extract_synonyms(answer),
         }
 
+    async def find_ontology_term(
+        self,
+        term_name: str,
+        ontology: str = "auto",
+        prefer_id_type: Optional[str] = None
+    ) -> Optional[Dict]:
+        """Find term across ALL ontologies with unified response.
+
+        This is the NEW primary method that replaces find_mesh_term() for
+        multi-ontology support. It queries Writer KG for MeSH, CHEBI, and GO
+        identifiers simultaneously.
+
+        Args:
+            term_name: Term to search (e.g., "lead", "oxidative stress", "CRP")
+            ontology: Which ontology to search:
+                - "auto": Search all, return all matches (default)
+                - "mesh": MeSH only
+                - "chebi": CHEBI only
+                - "go": GO only
+            prefer_id_type: If multiple IDs found, prefer this type
+                ("chebi", "mesh", "go"). Useful for ranking results.
+
+        Returns:
+            Dict with all found ontology IDs and INDRA query formats:
+            {
+                "term": "lead",
+                "mesh_id": "D007854",
+                "chebi_id": "CHEBI:25016",
+                "go_id": None,
+                "labels": {
+                    "mesh": "Lead",
+                    "chebi": "lead atom"
+                },
+                "definitions": {
+                    "mesh": "A heavy metal...",
+                    "chebi": "An element..."
+                },
+                "indra_query_formats": {
+                    "mesh": "MESH:D007854",
+                    "chebi": "CHEBI:25016@CHEBI"
+                },
+                "raw_ids": {
+                    "mesh_ids": ["D007854"],
+                    "chebi_ids": ["CHEBI:25016"],
+                    "go_ids": [],
+                    "hgnc_symbols": []
+                }
+            }
+
+        Example:
+            # Get all IDs for a chemical
+            result = await service.find_ontology_term("lead")
+            chebi_id = result["chebi_id"]  # Use for INDRA DB REST
+            mesh_id = result["mesh_id"]    # Use for PathwayCommons (if needed)
+
+            # Get only CHEBI ID
+            result = await service.find_ontology_term("benzene", ontology="chebi")
+
+            # Auto-detect with preference
+            result = await service.find_ontology_term("oxidative stress", prefer_id_type="go")
+        """
+        # Build ontology-aware question
+        if ontology == "auto":
+            question = (
+                f"What are the MeSH ID, CHEBI ID, and GO ID for '{term_name}'? "
+                f"Include all available database identifiers and labels."
+            )
+        elif ontology == "chebi":
+            question = (
+                f"What is the CHEBI ID for the chemical '{term_name}'? "
+                f"Include chemical formula and exact CHEBI identifier."
+            )
+        elif ontology == "mesh":
+            question = (
+                f"What is the MeSH ID for '{term_name}'? "
+                f"Include the MeSH descriptor number."
+            )
+        elif ontology == "go":
+            question = (
+                f"What is the Gene Ontology (GO) ID for the biological process '{term_name}'? "
+                f"Include the exact GO identifier."
+            )
+        else:
+            raise ValueError(f"Unknown ontology: {ontology}")
+
+        # Query Writer KG
+        result = await self.query_mesh_terms(
+            question,
+            max_snippets=15,
+            grounding_level=0.9
+        )
+
+        # Extract ALL IDs from answer + sources
+        full_text = result.get("answer", "") + "\n" + "\n".join([
+            s.get("snippet", "") for s in result.get("sources", [])
+        ])
+
+        ids = self._extract_all_ontology_ids(full_text)
+
+        # Build response
+        return {
+            "term": term_name,
+            "mesh_id": ids["mesh_ids"][0] if ids["mesh_ids"] else None,
+            "chebi_id": ids["chebi_ids"][0] if ids["chebi_ids"] else None,
+            "go_id": ids["go_ids"][0] if ids["go_ids"] else None,
+            "labels": self._extract_labels_from_result(result, ids),
+            "definitions": self._extract_definitions_from_result(result, ids),
+            "indra_query_formats": self._build_indra_formats(ids),
+            "raw_ids": ids,  # All found IDs for advanced usage
+        }
+
+    def _extract_labels_from_result(self, result: Dict, ids: Dict) -> Dict[str, str]:
+        """Extract labels for each ontology from Writer KG result.
+
+        Args:
+            result: Writer KG query result
+            ids: Extracted IDs dict from _extract_all_ontology_ids()
+
+        Returns:
+            Dict mapping ontology to label:
+            {
+                "mesh": "Particulate Matter",
+                "chebi": "lead atom"
+            }
+        """
+        labels = {}
+        answer = result.get("answer", "")
+
+        # Extract labels from answer text (LLM usually provides them)
+        if ids["mesh_ids"]:
+            # Look for patterns like "D052638 is Particulate Matter"
+            import re
+            for mesh_id in ids["mesh_ids"]:
+                pattern = rf'{mesh_id}\s+(?:is|refers to|means)\s+([^,.]+)'
+                match = re.search(pattern, answer, re.IGNORECASE)
+                if match:
+                    labels["mesh"] = match.group(1).strip()
+                    break
+
+        if ids["chebi_ids"]:
+            # Look for "CHEBI:25016 (lead atom)" or "lead atom (CHEBI:25016)"
+            for chebi_id in ids["chebi_ids"]:
+                pattern = rf'{chebi_id}\s*\(([^)]+)\)|([^(]+)\s*\({chebi_id}\)'
+                match = re.search(pattern, answer, re.IGNORECASE)
+                if match:
+                    labels["chebi"] = (match.group(1) or match.group(2)).strip()
+                    break
+
+        return labels
+
+    def _extract_definitions_from_result(self, result: Dict, ids: Dict) -> Dict[str, str]:
+        """Extract definitions for each ontology from Writer KG result.
+
+        Args:
+            result: Writer KG query result
+            ids: Extracted IDs dict
+
+        Returns:
+            Dict mapping ontology to definition
+        """
+        definitions = {}
+        answer = result.get("answer", "")
+
+        # Use LLM answer as primary definition source
+        if answer:
+            # Split answer by ontology mentions
+            if ids["mesh_ids"]:
+                definitions["mesh"] = answer  # Simplified for now
+            if ids["chebi_ids"]:
+                definitions["chebi"] = answer
+            if ids["go_ids"]:
+                definitions["go"] = answer
+
+        return definitions
+
+    def _build_indra_formats(self, ids: Dict[str, List[str]]) -> Dict[str, str]:
+        """Build INDRA-compatible query formats from ontology IDs.
+
+        This converts raw IDs into the exact format INDRA DB REST expects.
+
+        Args:
+            ids: Dict from _extract_all_ontology_ids()
+
+        Returns:
+            Dict mapping ontology to INDRA query string:
+            {
+                "mesh": "MESH:D052638",
+                "chebi": "CHEBI:25016@CHEBI",
+                "go": "GO:0006979",
+                "fplx": "FPLX:JNK"
+            }
+
+        Example:
+            >>> ids = {"chebi_ids": ["CHEBI:25016"], "mesh_ids": ["D052638"], "fplx_ids": ["FPLX:JNK"]}
+            >>> formats = service._build_indra_formats(ids)
+            >>> formats["chebi"]
+            "CHEBI:25016@CHEBI"  # Ready for INDRA DB REST query
+            >>> formats["fplx"]
+            "FPLX:JNK"  # Protein family queries
+        """
+        formats = {}
+
+        if ids.get("mesh_ids"):
+            formats["mesh"] = f"MESH:{ids['mesh_ids'][0]}"
+
+        if ids.get("chebi_ids"):
+            # CRITICAL: INDRA DB REST requires @CHEBI suffix
+            formats["chebi"] = f"{ids['chebi_ids'][0]}@CHEBI"
+
+        if ids.get("go_ids"):
+            formats["go"] = ids["go_ids"][0]
+
+        if ids.get("fplx_ids"):
+            # FPLX protein family format for INDRA queries
+            formats["fplx"] = ids["fplx_ids"][0]
+
+        return formats
+
     async def expand_with_hierarchy(self, mesh_id: str) -> Dict:
         """Get broader and narrower MeSH terms for hierarchical expansion.
 
@@ -270,6 +488,98 @@ class WriterKGService:
         if match:
             return match.group(1)
         return None
+
+    def _extract_chebi_id_from_answer(self, answer: str) -> Optional[str]:
+        """Extract CHEBI ID from LLM answer text.
+
+        Args:
+            answer: LLM-generated answer text
+
+        Returns:
+            CHEBI ID string (e.g., "CHEBI:25016") or None
+
+        Patterns supported:
+            - CHEBI:25016
+            - chebi:25016 (case insensitive)
+            - CHEBI 25016 (with space)
+        """
+        import re
+        match = re.search(r'\bCHEBI[:\s]?(\d+)\b', answer, re.IGNORECASE)
+        return f"CHEBI:{match.group(1)}" if match else None
+
+    def _extract_go_id_from_answer(self, answer: str) -> Optional[str]:
+        """Extract GO (Gene Ontology) ID from LLM answer text.
+
+        Args:
+            answer: LLM-generated answer text
+
+        Returns:
+            GO ID string (e.g., "GO:0006979") or None
+
+        Patterns supported:
+            - GO:0006979
+            - go:0006979 (case insensitive)
+            - GO 0006979 (with space)
+        """
+        import re
+        match = re.search(r'\bGO[:\s]?(\d{7})\b', answer, re.IGNORECASE)
+        return f"GO:{match.group(1)}" if match else None
+
+    def _extract_fplx_id_from_answer(self, answer: str) -> Optional[str]:
+        """Extract FPLX (FamPlex protein family) ID from LLM answer text.
+
+        Args:
+            answer: LLM-generated answer text
+
+        Returns:
+            FPLX ID string (e.g., "FPLX:JNK") or None
+
+        Patterns supported:
+            - FPLX:JNK
+            - fplx:ERK (case insensitive)
+            - FPLX NFkappaB_1 (with space)
+        """
+        import re
+        match = re.search(r'\bFPLX[:\s]?([A-Za-z0-9_]+)\b', answer, re.IGNORECASE)
+        return f"FPLX:{match.group(1)}" if match else None
+
+    def _extract_all_ontology_ids(self, text: str) -> Dict[str, List[str]]:
+        """Extract ALL ontology IDs from text (answer + sources).
+
+        This is the unified multi-ontology extractor that searches for
+        MeSH, CHEBI, GO, FPLX, and HGNC identifiers in combined text.
+
+        Args:
+            text: Combined text from LLM answer and source snippets
+
+        Returns:
+            Dict with lists of found IDs by type:
+            {
+                "mesh_ids": ["D052638", "D001554"],
+                "chebi_ids": ["CHEBI:25016", "CHEBI:16716"],
+                "go_ids": ["GO:0006979", "GO:0045454"],
+                "fplx_ids": ["FPLX:JNK", "FPLX:ERK"],
+                "hgnc_symbols": ["NFKB1", "JUN", "FOS"]
+            }
+
+        Example:
+            >>> text = "Lead (CHEBI:25016) activates NF-κB (FPLX:NFkappaB_1) and affects GO:0006979"
+            >>> ids = service._extract_all_ontology_ids(text)
+            >>> ids["chebi_ids"]
+            ["CHEBI:25016"]
+            >>> ids["fplx_ids"]
+            ["FPLX:NFkappaB_1"]
+            >>> ids["go_ids"]
+            ["GO:0006979"]
+        """
+        import re
+        return {
+            "mesh_ids": re.findall(r'\b([DCA]\d{6})\b', text),
+            "chebi_ids": [f"CHEBI:{m}" for m in re.findall(r'\bCHEBI[:\s]?(\d+)\b', text, re.IGNORECASE)],
+            "go_ids": [f"GO:{m}" for m in re.findall(r'\bGO[:\s]?(\d{7})\b', text, re.IGNORECASE)],
+            "fplx_ids": [f"FPLX:{m}" for m in re.findall(r'\bFPLX[:\s]?([A-Za-z0-9_]+)\b', text, re.IGNORECASE)],
+            "hgnc_symbols": re.findall(r'\b([A-Z][A-Z0-9]{2,10})\b', text),  # Gene symbols
+        }
 
     def _extract_mesh_id(self, source: Dict) -> Optional[str]:
         """Extract MeSH ID from source metadata or TSV snippet.

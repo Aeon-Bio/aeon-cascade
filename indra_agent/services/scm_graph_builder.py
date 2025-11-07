@@ -14,7 +14,8 @@ Design Philosophy:
 """
 
 import logging
-from typing import Any, Dict, List, Optional, Set
+import time
+from typing import Any, Dict, List, Optional, Set, Tuple
 
 from indra_agent.config.biological_priors import (
     KNOWN_MEDIATORS,
@@ -22,6 +23,7 @@ from indra_agent.config.biological_priors import (
     get_prior_edge,
     normalize_entity_name,
 )
+from indra_agent.core.failure_modes import FailureMode, DiscoveryAttempt, FailureReason
 from indra_agent.services.indra_service import INDRAService
 
 logger = logging.getLogger(__name__)
@@ -163,8 +165,8 @@ class SCMGraphBuilder:
         max_depth: int = 4,
         use_priors: bool = True,
         progress_emitter=None,
-    ) -> List[Dict[str, Any]]:
-        """Build SCM graph connecting sources to targets.
+    ) -> Tuple[List[Dict[str, Any]], Optional[FailureMode]]:
+        """Build SCM graph connecting sources to targets with transparent failure modes.
 
         Strategy:
         1. If targets not provided, discover biomarker targets via multi_interactors
@@ -192,8 +194,13 @@ class SCMGraphBuilder:
             progress_emitter: Optional ProgressEmitter for streaming discovery updates
 
         Returns:
-            List of path dicts compatible with GraphBuilderService
+            Tuple of (paths, failure_mode):
+            - paths: List of discovered paths (may be empty)
+            - failure_mode: Explanation if paths empty, None if paths found
         """
+        # Track discovery attempts for transparent failure modes
+        discovery_attempts: List[DiscoveryAttempt] = []
+        start_time = time.time()
         # Discover targets if not provided (target-less discovery)
         if not targets:
             logger.info(f"No targets provided. Discovering biomarker targets from {len(sources)} sources...")
@@ -265,7 +272,20 @@ class SCMGraphBuilder:
                 logger.info(f"Discovering paths: {source} → {target}")
 
                 # Phase 1: Try direct INDRA search
+                phase1_start = time.time()
                 direct_paths = await self._find_direct_paths(source, target, max_depth)
+                phase1_duration = int((time.time() - phase1_start) * 1000)
+
+                # Track Phase 1 attempt
+                discovery_attempts.append(DiscoveryAttempt(
+                    phase="Phase 1: Direct INDRA query",
+                    query=f"{source} → {target}",
+                    result=f"{len(direct_paths)} paths found",
+                    duration_ms=phase1_duration,
+                    success=len(direct_paths) > 0,
+                    reason=None if direct_paths else "No direct statements in INDRA",
+                    statements_count=sum(len(p.get("edges", [])) for p in direct_paths) if direct_paths else 0
+                ))
 
                 if direct_paths:
                     logger.info(f"  Found {len(direct_paths)} direct paths via INDRA")
@@ -320,9 +340,29 @@ class SCMGraphBuilder:
 
                 # Phase 2: Expand via known mediators
                 logger.info(f"  No direct paths. Expanding via mediators...")
+                phase2_start = time.time()
+
+                # Get candidate mediators for tracking
+                candidate_mediators = get_mediators_between(source, target)
+                if not candidate_mediators:
+                    candidate_mediators = known_mediators[:10]
+
                 mediated_paths = await self._find_mediated_paths(
                     source, target, known_mediators, max_depth
                 )
+                phase2_duration = int((time.time() - phase2_start) * 1000)
+
+                # Track Phase 2 attempt
+                discovery_attempts.append(DiscoveryAttempt(
+                    phase="Phase 2: Mediator expansion",
+                    query=f"{source} → {target}",
+                    result=f"{len(mediated_paths)} paths found",
+                    duration_ms=phase2_duration,
+                    success=len(mediated_paths) > 0,
+                    reason=None if mediated_paths else "No paths via mediators",
+                    mediators_tried=[m for m in candidate_mediators[:10]],
+                    statements_count=sum(len(p.get("edges", [])) for p in mediated_paths) if mediated_paths else 0
+                ))
 
                 if mediated_paths:
                     logger.info(f"  Found {len(mediated_paths)} mediated paths via INDRA")
@@ -382,7 +422,19 @@ class SCMGraphBuilder:
                 # Phase 3: Apply biological priors (fallback)
                 if use_priors:
                     logger.info(f"  INDRA search failed. Applying biological priors...")
+                    phase3_start = time.time()
                     prior_paths = self._build_prior_paths(source, target, max_depth)
+                    phase3_duration = int((time.time() - phase3_start) * 1000)
+
+                    # Track Phase 3 attempt
+                    discovery_attempts.append(DiscoveryAttempt(
+                        phase="Phase 3: Biological priors",
+                        query=f"{source} → {target}",
+                        result=f"{len(prior_paths)} paths from priors",
+                        duration_ms=phase3_duration,
+                        success=len(prior_paths) > 0,
+                        reason=None if prior_paths else "No prior knowledge available"
+                    ))
 
                     if prior_paths:
                         logger.info(f"  Built {len(prior_paths)} paths from priors")
@@ -411,10 +463,16 @@ class SCMGraphBuilder:
         # Merge paths and return
         if not all_paths:
             logger.warning("No paths discovered for any (source, target) pair")
-            return []
+
+            total_duration = int((time.time() - start_time) * 1000)
+            failure_mode = self._generate_failure_explanation(
+                sources, targets, discovery_attempts, total_duration
+            )
+
+            return [], failure_mode  # Return tuple (empty paths, failure explanation)
 
         logger.info(f"Total paths discovered: {len(all_paths)}")
-        return all_paths
+        return all_paths, None  # Success: (paths, no failure)
 
     async def _find_direct_paths(
         self, source: str, target: str, max_depth: int
@@ -704,3 +762,82 @@ class SCMGraphBuilder:
             "from_priors": True,
             "mediator": mediator,
         }
+
+    def _generate_failure_explanation(
+        self,
+        sources: List[str],
+        targets: List[str],
+        discovery_attempts: List[DiscoveryAttempt],
+        total_duration_ms: int
+    ) -> FailureMode:
+        """Generate transparent failure mode explanation.
+
+        Args:
+            sources: Source entities queried
+            targets: Target entities queried
+            discovery_attempts: Log of all discovery attempts
+            total_duration_ms: Total time spent
+
+        Returns:
+            FailureMode with explanation and suggestions
+        """
+        # Classify failure reason
+        if not discovery_attempts:
+            reason = FailureReason.NO_CAUSAL_RELATIONSHIP
+            explanation = (
+                f"No discovery attempts recorded for {sources} → {targets}. "
+                f"This may indicate a query error or unsupported entity type."
+            )
+        elif all(not attempt.success for attempt in discovery_attempts):
+            # All phases failed
+            reason = FailureReason.INDRA_COVERAGE_GAP
+            explanation = (
+                f"INDRA database has no documented causal relationships between "
+                f"{sources[0]} and {targets[0]}. All 3 discovery phases failed:\n"
+                f"- Direct INDRA query: No statements found\n"
+                f"- Mediator expansion: No indirect paths found\n"
+                f"- Biological priors: No prior knowledge available\n\n"
+                f"This suggests a gap in scientific literature coverage rather "
+                f"than lack of biological relationship."
+            )
+        else:
+            # Some phases succeeded partially
+            reason = FailureReason.NO_DIRECT_PATH
+            explanation = (
+                f"No complete causal paths found from {sources[0]} to {targets[0]}, "
+                f"despite partial success in some discovery phases. "
+                f"This may indicate insufficient evidence or complex mechanisms "
+                f"requiring more intermediate steps than max_depth=4 allows."
+            )
+
+        # Generate suggestions
+        suggestions = []
+        if reason == FailureReason.INDRA_COVERAGE_GAP:
+            suggestions.append(
+                f"Manual literature search: PubMed '{sources[0]} AND {targets[0]}'"
+            )
+            suggestions.append(
+                "Check recent publications (2023-2024) not yet in INDRA database"
+            )
+            suggestions.append(
+                "Consider related queries with broader/narrower entity names"
+            )
+        elif reason == FailureReason.NO_DIRECT_PATH:
+            suggestions.append(
+                "Increase max_depth parameter to allow longer pathways"
+            )
+            suggestions.append(
+                f"Try querying segments separately: {sources[0]} → intermediate, intermediate → {targets[0]}"
+            )
+            suggestions.append(
+                "Expand mediator list to include cell-type specific factors"
+            )
+
+        return FailureMode(
+            reason=reason,
+            explanation=explanation,
+            discovery_attempts=discovery_attempts,
+            suggestions=suggestions,
+            indra_coverage={},  # TODO: Add coverage analysis in Phase 2
+            total_duration_ms=total_duration_ms
+        )

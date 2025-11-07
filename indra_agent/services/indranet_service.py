@@ -88,8 +88,14 @@ class IndraNetService:
     # After this, oldest entries are evicted (LRU)
     MAX_CACHE_SIZE = 50
 
-    def __init__(self):
-        """Initialize optimized IndraNet service."""
+    def __init__(self, grounding_service=None):
+        """Initialize optimized IndraNet service.
+
+        Args:
+            grounding_service: Optional GroundingService for synonym expansion.
+                             If not provided, will be lazy-initialized with local ontology.
+        """
+        self.grounding_service = grounding_service
         self.statement_cache: Dict[str, List[Statement]] = {}
         self._cache_access_order: List[str] = []  # Track LRU order
         logger.info("IndraNet service initialized")
@@ -190,25 +196,27 @@ class IndraNetService:
     async def _get_path_statements_optimized(
         self, source: str, target: str
     ) -> List[Statement]:
-        """Optimized path statement fetching using single directed query.
+        """Exhaustive synonym-based path discovery.
 
-        OLD (3 queries, 60s):
-        - Query 1: subject=source, object=target (20s)
-        - Query 2: agents=[source] (20s)
-        - Query 3: agents=[target] (20s)
+        ARCHITECTURE: This is NOT a simple "grounding" problem.
+        Instead, we query INDRA with ALL synonym combinations to let
+        molecular intermediates EMERGE from graph structure.
 
-        NEW (1 query, ~5-10s):
-        - Query 1: subject=source, object=target with higher limit
+        Strategy:
+        1. Get ALL synonyms for source and target (via Writer KG MeSH)
+        2. Query INDRA with every synonym combination (parallel)
+        3. Merge results - duplicates filtered by INDRA's belief scoring
+        4. Let intermediates emerge from merged graph
 
-        This works because we're doing pathfinding (directional).
-        For multi-hop paths, we rely on mediator expansion in SCM graph builder.
+        This discovers latent causal structures that would be invisible
+        with single-name queries.
 
         Args:
-            source: Source entity
-            target: Target entity
+            source: Source entity name (will be expanded to synonyms)
+            target: Target entity name (will be expanded to synonyms)
 
         Returns:
-            List of INDRA statements
+            List of INDRA statements from ALL synonym combinations
         """
         cache_key = f"opt:{source}:{target}"
         if cache_key in self.statement_cache:
@@ -218,25 +226,83 @@ class IndraNetService:
             self._cache_access_order.append(cache_key)
             return self.statement_cache[cache_key]
 
-        def fetch():
+        # Get ALL synonyms for exhaustive search
+        # Use injected grounding service or lazy-initialize with local ontology
+        if not self.grounding_service:
+            from indra_agent.services.local_ontology_adapter import LocalOntologyAdapter
+            from indra_agent.services.grounding_service import GroundingService
+
+            local_ontology = LocalOntologyAdapter()
+            await local_ontology.initialize()
+            self.grounding_service = GroundingService(local_ontology=local_ontology)
+            logger.info("Lazy-initialized GroundingService with local ontology")
+
+        source_synonyms = await self.grounding_service.get_all_synonyms(source)
+        target_synonyms = await self.grounding_service.get_all_synonyms(target)
+
+        logger.info(f"Exhaustive search: {len(source_synonyms)} source × {len(target_synonyms)} target synonyms")
+        logger.debug(f"Source synonyms for '{source}': {source_synonyms[:5]}...")
+        logger.debug(f"Target synonyms for '{target}': {target_synonyms[:5]}...")
+
+        async def fetch_combination(src_syn: str, tgt_syn: str) -> List[Statement]:
+            """Query INDRA for one synonym combination."""
             try:
-                processor = idr.get_statements(
-                    subject=source,
-                    object=target,
-                    limit=200,  # Higher limit since single query
-                    persist=False,  # No pagination - fast response
-                    ev_limit=5,  # More evidence per statement
-                    sort_by='ev_count',  # Best evidence first
-                    timeout=30,
-                    tries=2
-                )
-                logger.info(f"Got {len(processor.statements)} statements: {source} → {target}")
-                return processor.statements
+                def fetch():
+                    processor = idr.get_statements(
+                        subject=src_syn,
+                        object=tgt_syn,
+                        limit=200,
+                        persist=False,
+                        ev_limit=5,
+                        sort_by='ev_count',
+                        timeout=30,
+                        tries=2
+                    )
+                    return processor.statements
+
+                stmts = await asyncio.to_thread(fetch)
+                if stmts:
+                    logger.debug(f"Found {len(stmts)} statements: {src_syn} → {tgt_syn}")
+                return stmts
             except Exception as e:
-                logger.error(f"Query failed for {source} → {target}: {e}")
+                logger.debug(f"Query failed for {src_syn} → {tgt_syn}: {e}")
                 return []
 
-        statements = await asyncio.to_thread(fetch)
+        # Query all synonym combinations in parallel (with concurrency limit)
+        from asyncio import Semaphore
+        sem = Semaphore(5)  # Max 5 concurrent INDRA queries
+
+        async def fetch_with_limit(src_syn: str, tgt_syn: str):
+            async with sem:
+                return await fetch_combination(src_syn, tgt_syn)
+
+        # Create all tasks
+        tasks = [
+            fetch_with_limit(src_syn, tgt_syn)
+            for src_syn in source_synonyms
+            for tgt_syn in target_synonyms
+        ]
+
+        # Execute all queries in parallel
+        all_results = await asyncio.gather(*tasks, return_exceptions=True)
+
+        # Merge results (flatten list of lists)
+        statements = []
+        for result in all_results:
+            if isinstance(result, list):
+                statements.extend(result)
+            elif isinstance(result, Exception):
+                logger.debug(f"Query task failed: {result}")
+
+        # INDRA statements have hash-based deduplication built-in
+        # (multiple queries returning same statement will have same hash)
+        unique_statements = {stmt.get_hash(): stmt for stmt in statements}
+        statements = list(unique_statements.values())
+
+        logger.info(
+            f"Exhaustive search complete: {len(statements)} unique statements "
+            f"from {len(source_synonyms)} × {len(target_synonyms)} combinations"
+        )
 
         # LRU eviction if cache is full
         if len(self.statement_cache) >= self.MAX_CACHE_SIZE:
@@ -328,17 +394,19 @@ class IndraNetService:
         belief_cutoff: float = 0.6,
         max_results: int = 50,
     ) -> List[Dict[str, Any]]:
-        """Get direct interactors (neighbors) for given nodes.
+        """Get direct interactors (neighbors) via exhaustive synonym search.
 
-        This is a compatibility method for SCMGraphBuilder. It uses INDRA Python library
-        to discover what entities interact with the given nodes.
+        ARCHITECTURE: Query INDRA with ALL synonyms for each node to discover
+        latent neighbors that would be missed with single-name queries.
 
         Strategy:
-        - For each input node, query INDRA for statements where:
-          - downstream=True: node is SUBJECT (node → ?)
-          - downstream=False: node is OBJECT (? → node)
-        - Collect unique neighbor entities
-        - Rank by belief × evidence
+        1. For each input node, expand to ALL synonyms (via Writer KG)
+        2. Query INDRA for statements where each synonym is:
+           - downstream=True: SUBJECT (node → ?)
+           - downstream=False: OBJECT (? → node)
+        3. Merge results, deduplicate by statement hash
+        4. Collect unique neighbor entities
+        5. Rank by belief × evidence
 
         Args:
             nodes: List of node names (e.g., ["PM2.5", "CRP"])
@@ -356,6 +424,16 @@ class IndraNetService:
         try:
             all_statements: List[Statement] = []
 
+            # Use injected grounding service or lazy-initialize with local ontology
+            if not self.grounding_service:
+                from indra_agent.services.local_ontology_adapter import LocalOntologyAdapter
+                from indra_agent.services.grounding_service import GroundingService
+
+                local_ontology = LocalOntologyAdapter()
+                await local_ontology.initialize()
+                self.grounding_service = GroundingService(local_ontology=local_ontology)
+                logger.info("Lazy-initialized GroundingService with local ontology")
+
             for node in nodes:
                 cache_key = f"neighbors:{node}:{downstream}"
                 if cache_key in self.statement_cache:
@@ -366,34 +444,66 @@ class IndraNetService:
                     all_statements.extend(self.statement_cache[cache_key])
                     continue
 
-                def fetch():
+                # Get ALL synonyms for exhaustive neighborhood discovery
+                node_synonyms = await self.grounding_service.get_all_synonyms(node)
+                logger.info(f"Expanding '{node}' to {len(node_synonyms)} synonyms for neighbor search")
+                logger.debug(f"Node synonyms: {node_synonyms[:5]}...")
+
+                # Query with all synonyms
+                from asyncio import Semaphore
+                sem = Semaphore(5)  # Max 5 concurrent queries
+
+                async def fetch_neighbor_for_synonym(syn: str):
+                    """Query neighbors for one synonym."""
                     try:
-                        # Query for statements where node is subject (downstream) or object (upstream)
-                        processor = idr.get_statements(
-                            subject=node if downstream else None,
-                            object=node if not downstream else None,
-                            limit=150,  # Get more neighbors
-                            persist=False,
-                            ev_limit=3,
-                            sort_by='ev_count',
-                            timeout=20,
-                            tries=2
-                        )
-                        logger.info(f"Got {len(processor.statements)} neighbor statements for {node}")
-                        return processor.statements
+                        def fetch():
+                            processor = idr.get_statements(
+                                subject=syn if downstream else None,
+                                object=syn if not downstream else None,
+                                limit=150,
+                                persist=False,
+                                ev_limit=3,
+                                sort_by='ev_count',
+                                timeout=20,
+                                tries=2
+                            )
+                            return processor.statements
+
+                        async with sem:
+                            stmts = await asyncio.to_thread(fetch)
+                        if stmts:
+                            logger.debug(f"Found {len(stmts)} neighbors for synonym '{syn}'")
+                        return stmts
                     except Exception as e:
-                        logger.error(f"Query failed for neighbors of {node}: {e}")
+                        logger.debug(f"Query failed for neighbors of '{syn}': {e}")
                         return []
 
-                stmts = await asyncio.to_thread(fetch)
+                # Query all synonyms in parallel
+                tasks = [fetch_neighbor_for_synonym(syn) for syn in node_synonyms]
+                results = await asyncio.gather(*tasks, return_exceptions=True)
+
+                # Merge and deduplicate
+                node_statements = []
+                for result in results:
+                    if isinstance(result, list):
+                        node_statements.extend(result)
+
+                # Deduplicate by statement hash
+                unique_stmts = {stmt.get_hash(): stmt for stmt in node_statements}
+                node_statements = list(unique_stmts.values())
+
+                logger.info(
+                    f"Exhaustive neighbor search for '{node}': {len(node_statements)} unique statements "
+                    f"from {len(node_synonyms)} synonyms"
+                )
 
                 # LRU eviction if cache is full
                 if len(self.statement_cache) >= self.MAX_CACHE_SIZE:
                     self._evict_oldest_cache_entry()
 
-                self.statement_cache[cache_key] = stmts
+                self.statement_cache[cache_key] = node_statements
                 self._cache_access_order.append(cache_key)
-                all_statements.extend(stmts)
+                all_statements.extend(node_statements)
 
             if not all_statements:
                 logger.warning(f"No statements found for neighbors of {nodes}")

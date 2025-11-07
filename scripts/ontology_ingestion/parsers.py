@@ -200,14 +200,26 @@ class CTDParser(OntologyParser):
         try:
             # CTD TSV has header lines starting with #
             # Skip until we find column headers
+            header_line = None
             for line in f:
                 if line.startswith("# Fields:"):
-                    # Next line is column headers
+                    # Next line is column headers (also starts with #)
+                    header_line = next(f).strip()
                     break
 
-            # Read TSV with csv.DictReader
+            if not header_line:
+                return iter([])  # No header found
+
+            # Strip leading # and parse as TSV header
+            header_line = header_line.lstrip("#").strip()
+            fieldnames = [col.strip() for col in header_line.split("\t")]
+
+            # Skip the empty # line after header
+            next(f)
+
+            # Read TSV with csv.DictReader using parsed fieldnames
             reader = csv.DictReader(
-                f, delimiter="\t", quoting=csv.QUOTE_NONE
+                f, fieldnames=fieldnames, delimiter="\t", quoting=csv.QUOTE_NONE
             )
 
             # Accumulate interactions by chemical

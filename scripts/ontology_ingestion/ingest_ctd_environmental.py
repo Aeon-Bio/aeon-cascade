@@ -22,7 +22,7 @@ import argparse
 import logging
 from pathlib import Path
 
-from converters import WriterCSVConverter
+from converters import ExtendedCSVConverter
 from ontology_base import OntologyIngestionPipeline
 from parsers import CTDParser, get_parser, OntologyFormat
 
@@ -100,7 +100,7 @@ def main():
     pipeline = OntologyIngestionPipeline(
         downloader=CTDDownloader(DATA_DIR),
         parser=CTDParser(),
-        converter=WriterCSVConverter(),
+        converter=ExtendedCSVConverter(),
         target_ids=target_chemicals,
     )
 

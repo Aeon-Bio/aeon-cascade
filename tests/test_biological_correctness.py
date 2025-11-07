@@ -63,12 +63,18 @@ async def get_il1b_il6_pathway() -> List[Dict]:
     indra_service = IndraNetService()
     scm_builder = SCMGraphBuilder(indra_service)
 
-    paths = await scm_builder.build_scm_graph(
+    # INTERFACE CONTRACT: build_scm_graph returns Tuple[List[Dict], Optional[FailureMode]]
+    paths, failure_mode = await scm_builder.build_scm_graph(
         sources=["IL1B"],
         targets=["IL6"],
         max_depth=4,
         use_priors=True
     )
+
+    # If failure mode, raise for debugging
+    if failure_mode:
+        logger.warning(f"Pathway discovery failed: {failure_mode.reason}")
+        logger.warning(failure_mode.to_user_message())
 
     return paths
 

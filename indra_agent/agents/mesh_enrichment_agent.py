@@ -17,7 +17,7 @@ from langgraph.prebuilt import create_react_agent
 
 from indra_agent.agents.state import OverallState
 from indra_agent.config.settings import get_settings
-from indra_agent.services.writer_kg_service import WriterKGService
+from indra_agent.services.local_ontology_adapter import LocalOntologyAdapter
 
 logger = logging.getLogger(__name__)
 
@@ -55,9 +55,9 @@ def create_mesh_tools(progress_emitter=None):
     Returns:
         List of LangChain tools for MeSH operations
     """
-    # Initialize Writer KG service (shared across tool calls)
+    # Initialize local ontology (shared across tool calls)
     settings = get_settings()
-    writer_service = WriterKGService() if settings.is_writer_configured else None
+    local_ontology = LocalOntologyAdapter()
 
     @tool
     async def enrich_biomedical_terms(
@@ -76,13 +76,9 @@ def create_mesh_tools(progress_emitter=None):
         Returns:
             JSON string with enriched entities containing MeSH metadata
         """
-        if writer_service is None:
-            logger.warning("Writer KG not configured - skipping MeSH enrichment")
-            return json.dumps({
-                "status": "skipped",
-                "message": "Writer KG not configured",
-                "enriched_entities": []
-            })
+        # Initialize local ontology if not already done
+        if not hasattr(local_ontology, '_initialized') or not local_ontology._initialized:
+            await local_ontology.initialize()
 
         try:
             # Emit initial progress: Step 4 - MeSH enrichment (18%)
@@ -103,7 +99,7 @@ def create_mesh_tools(progress_emitter=None):
             async def enrich_single_term(term: str):
                 """Enrich a single term and return (term, result) tuple."""
                 logger.info(f"Enriching term: {term}")
-                result = await writer_service.find_mesh_term(term)
+                result = await local_ontology.find_mesh_term(term)
                 return (term, result)
 
             tasks = [enrich_single_term(term) for term in limited_terms]
