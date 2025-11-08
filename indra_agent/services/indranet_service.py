@@ -93,7 +93,7 @@ class IndraNetService:
 
         Args:
             grounding_service: Optional GroundingService for synonym expansion.
-                             If not provided, will be lazy-initialized with local ontology.
+                             If not provided, will be lazy-initialized with Gilda (INDRA's official grounding).
         """
         self.grounding_service = grounding_service
         self.statement_cache: Dict[str, List[Statement]] = {}
@@ -227,15 +227,14 @@ class IndraNetService:
             return self.statement_cache[cache_key]
 
         # Get ALL synonyms for exhaustive search
-        # Use injected grounding service or lazy-initialize with local ontology
+        # Use injected grounding service or lazy-initialize with Gilda (INDRA's official grounding)
         if not self.grounding_service:
-            from indra_agent.services.local_ontology_adapter import LocalOntologyAdapter
             from indra_agent.services.grounding_service import GroundingService
 
-            local_ontology = LocalOntologyAdapter()
-            await local_ontology.initialize()
-            self.grounding_service = GroundingService(local_ontology=local_ontology)
-            logger.info("Lazy-initialized GroundingService with local ontology")
+            # use_gilda=True - precise entity grounding via INDRA's official service
+            # local_ontology=None - skip Memgraph (causes imprecise CONTAINS substring matches)
+            self.grounding_service = GroundingService(local_ontology=None, use_gilda=True)
+            logger.info("Lazy-initialized GroundingService with Gilda (precise grounding, no Memgraph)")
 
         source_synonyms = await self.grounding_service.get_all_synonyms(source)
         target_synonyms = await self.grounding_service.get_all_synonyms(target)
@@ -424,15 +423,14 @@ class IndraNetService:
         try:
             all_statements: List[Statement] = []
 
-            # Use injected grounding service or lazy-initialize with local ontology
+            # Use injected grounding service or lazy-initialize with Gilda (INDRA's official grounding)
             if not self.grounding_service:
-                from indra_agent.services.local_ontology_adapter import LocalOntologyAdapter
                 from indra_agent.services.grounding_service import GroundingService
 
-                local_ontology = LocalOntologyAdapter()
-                await local_ontology.initialize()
-                self.grounding_service = GroundingService(local_ontology=local_ontology)
-                logger.info("Lazy-initialized GroundingService with local ontology")
+                # use_gilda=True - precise entity grounding via INDRA's official service
+                # local_ontology=None - skip Memgraph (causes imprecise CONTAINS substring matches)
+                self.grounding_service = GroundingService(local_ontology=None, use_gilda=True)
+                logger.info("Lazy-initialized GroundingService with Gilda (precise grounding, no Memgraph)")
 
             for node in nodes:
                 cache_key = f"neighbors:{node}:{downstream}"

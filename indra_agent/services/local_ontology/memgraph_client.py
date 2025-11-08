@@ -207,10 +207,15 @@ class MemgraphClient:
             MATCH (e:Entity)
             WHERE e.namespace IN $namespaces
               AND e.name IS NOT NULL
-              AND (toLower(e.name) STARTS WITH $prefix_lower OR
-                   ANY(syn IN e.synonyms WHERE syn IS NOT NULL AND toLower(syn) STARTS WITH $prefix_lower))
+              AND (toLower(e.name) CONTAINS $prefix_lower OR
+                   toLower(e.name) STARTS WITH $prefix_lower OR
+                   ANY(syn IN e.synonyms WHERE syn IS NOT NULL AND (toLower(syn) CONTAINS $prefix_lower OR toLower(syn) STARTS WITH $prefix_lower)))
             RETURN e
-            ORDER BY e.name
+            ORDER BY CASE
+                WHEN toLower(e.name) = $prefix_lower THEN 0
+                WHEN toLower(e.name) STARTS WITH $prefix_lower THEN 1
+                ELSE 2
+            END, e.name
             LIMIT $limit
             """
             params = {"prefix_lower": prefix_lower, "namespaces": namespaces, "limit": limit}
@@ -218,10 +223,15 @@ class MemgraphClient:
             query = """
             MATCH (e:Entity)
             WHERE e.name IS NOT NULL
-              AND (toLower(e.name) STARTS WITH $prefix_lower OR
-                   ANY(syn IN e.synonyms WHERE syn IS NOT NULL AND toLower(syn) STARTS WITH $prefix_lower))
+              AND (toLower(e.name) CONTAINS $prefix_lower OR
+                   toLower(e.name) STARTS WITH $prefix_lower OR
+                   ANY(syn IN e.synonyms WHERE syn IS NOT NULL AND (toLower(syn) CONTAINS $prefix_lower OR toLower(syn) STARTS WITH $prefix_lower)))
             RETURN e
-            ORDER BY e.name
+            ORDER BY CASE
+                WHEN toLower(e.name) = $prefix_lower THEN 0
+                WHEN toLower(e.name) STARTS WITH $prefix_lower THEN 1
+                ELSE 2
+            END, e.name
             LIMIT $limit
             """
             params = {"prefix_lower": prefix_lower, "limit": limit}

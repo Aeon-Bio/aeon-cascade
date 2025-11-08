@@ -45,14 +45,27 @@ class GroundingService:
         "nfkb": ["NFKB1"],
     }
 
-    def __init__(self, local_ontology=None):
-        """Initialize with local ontology for MeSH synonym expansion.
+    def __init__(self, local_ontology=None, use_gilda: bool = True):
+        """Initialize with optional Gilda grounding.
 
         Args:
-            local_ontology: LocalOntologyAdapter for MeSH ontology lookups
+            local_ontology: LocalOntologyAdapter for MeSH ontology lookups (DEPRECATED - causes imprecise matches)
+            use_gilda: If True, use Gilda for precise entity grounding (RECOMMENDED)
         """
         self.local_ontology = local_ontology
+        self.use_gilda = use_gilda
         self.cache: Dict[str, List[str]] = {}
+
+        # Lazy-import Gilda to avoid import errors if not installed
+        self._gilda = None
+        if use_gilda:
+            try:
+                import gilda
+                self._gilda = gilda
+                logger.info("Gilda grounding enabled (INDRA's official grounding service)")
+            except ImportError:
+                logger.warning("Gilda not installed - falling back to INDRA name variants only")
+                logger.warning("Install with: pip install gilda")
 
     async def get_all_synonyms(self, entity: str) -> List[str]:
         """Get ALL ways to refer to this entity for INDRA search.
@@ -86,28 +99,42 @@ class GroundingService:
         synonyms.add(entity.lower())
         synonyms.add(entity.upper())
 
-        # Query local ontology for MeSH synonyms
-        if self.local_ontology:
+        # Use Gilda for precise entity grounding (INDRA's official grounding service)
+        if self.use_gilda and self._gilda:
             try:
-                mesh_result = await self.local_ontology.find_mesh_term(entity)
-                if mesh_result:
-                    # Add canonical MeSH label
-                    synonyms.add(mesh_result["mesh_label"])
-                    synonyms.add(mesh_result["mesh_label"].lower())
+                # Gilda.ground() returns list of ScoredMatch objects
+                # ScoredMatch has attributes: term (with .entry_name, .db, .id), score, text
+                results = self._gilda.ground(entity)
 
-                    # Add MeSH ID (INDRA might accept it)
-                    mesh_id = mesh_result["mesh_id"]
-                    synonyms.add(f"MESH:{mesh_id}")
-                    synonyms.add(mesh_id)
+                if results:
+                    # Take top 3 grounding results (high confidence matches)
+                    for result in results[:3]:
+                        # Add term entry name
+                        synonyms.add(result.term.entry_name)
 
-                    # Add all MeSH synonyms
-                    for syn in mesh_result.get("synonyms", []):
-                        synonyms.add(syn)
-                        synonyms.add(syn.lower())
+                        # Add the matched text variant
+                        if hasattr(result, 'text'):
+                            synonyms.add(result.text)
 
-                    logger.debug(f"Local ontology found {len(synonyms)} synonyms for {entity}")
+                        # Add database IDs (INDRA accepts namespace:ID format)
+                        db = result.term.db
+                        db_id = result.term.id
+
+                        if db == 'CHEBI':
+                            synonyms.add(f"CHEBI:{db_id}")
+                            # Don't add double prefix - Gilda already includes it
+                        elif db == 'HGNC':
+                            synonyms.add(f"HGNC:{db_id}")
+                        elif db == 'GO':
+                            synonyms.add(f"GO:{db_id}")
+                        elif db == 'MESH':
+                            synonyms.add(f"MESH:{db_id}")
+                        elif db == 'UP':  # UniProt
+                            synonyms.add(f"UP:{db_id}")
+
+                    logger.debug(f"Gilda found {len(results)} grounding results for '{entity}' (using top 3)")
             except Exception as e:
-                logger.warning(f"Local ontology lookup failed for {entity}: {e}")
+                logger.warning(f"Gilda grounding failed for {entity}: {e}")
 
         # Add INDRA-specific variants
         entity_lower = entity.lower()
@@ -124,7 +151,8 @@ class GroundingService:
         result = sorted(list(synonyms))
         self.cache[entity] = result
 
-        logger.info(f"Expanded {entity} → {len(result)} synonyms for INDRA search")
+        grounding_source = "Gilda" if (self.use_gilda and self._gilda) else "INDRA variants only"
+        logger.info(f"Expanded '{entity}' → {len(result)} synonyms via {grounding_source}")
         return result
 
     async def get_canonical(self, entity: str) -> str:

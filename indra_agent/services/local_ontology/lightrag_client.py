@@ -60,56 +60,74 @@ class LightRAGClient:
         if self.rag:
             return
 
-        logger.warning("LightRAG initialization not yet fully implemented for latest API version")
-        logger.warning("Semantic search features will be unavailable")
-        logger.warning("Memgraph-only mode will be used")
+        try:
+            # Create PubMedBERT embedding function
+            embedding_func = self._create_embedding_func()
 
-        # TODO: Update to latest LightRAG API
-        # For now, we skip LightRAG initialization and rely on Memgraph only
-        # self.rag = LightRAG(working_dir=str(self.working_dir), ...)
+            # Create dummy LLM function (not used for entity grounding)
+            async def dummy_llm(prompt, **kwargs):
+                """Dummy LLM function (not used for entity grounding)."""
+                return ""
 
-        logger.info("LightRAG client initialized (semantic features disabled)")
+            # Initialize LightRAG with biomedical embeddings
+            self.rag = LightRAG(
+                working_dir=str(self.working_dir),
+                embedding_func=embedding_func,
+                embedding_batch_num=10,
+                embedding_func_max_async=8,
+                llm_model_func=dummy_llm,  # Dummy LLM (required but not used)
+                enable_llm_cache=False,
+            )
+            logger.info(f"LightRAG initialized with PubMedBERT embeddings at {self.working_dir}")
+
+        except Exception as e:
+            logger.error(f"Failed to initialize LightRAG: {e}")
+            logger.warning("Falling back to Memgraph CONTAINS matching")
+            self.rag = None
 
     def _create_embedding_func(self):
-        """Create embedding function using PubMedBERT.
+        """Create embedding function using PubMedBERT via sentence-transformers.
 
         Returns:
-            Async function for computing embeddings
+            Function for computing embeddings (synchronous, as LightRAG expects)
         """
-        async def pubmedbert_embedding(texts: List[str]) -> List[List[float]]:
-            """Compute PubMedBERT embeddings for texts."""
-            # Use HuggingFace transformers to compute embeddings
-            try:
-                from transformers import AutoTokenizer, AutoModel
-                import torch
+        try:
+            from sentence_transformers import SentenceTransformer
+            import logging as stdlib_logging
 
-                # Load model and tokenizer (cached after first load)
-                tokenizer = AutoTokenizer.from_pretrained(self.embedding_model)
-                model = AutoModel.from_pretrained(self.embedding_model)
-                model.eval()
+            logger.info(f"Loading PubMedBERT model via sentence-transformers: {self.embedding_model}")
 
-                # Tokenize and compute embeddings
-                inputs = tokenizer(
-                    texts,
-                    padding=True,
-                    truncation=True,
-                    max_length=512,
-                    return_tensors="pt"
-                )
+            # Temporarily suppress sentence-transformers logger warnings
+            # (auto-creating pooling layer is expected for base BERT models)
+            st_logger = stdlib_logging.getLogger('sentence_transformers')
+            original_level = st_logger.level
+            st_logger.setLevel(stdlib_logging.ERROR)
 
-                with torch.no_grad():
-                    outputs = model(**inputs)
-                    # Use [CLS] token embedding (first token)
-                    embeddings = outputs.last_hidden_state[:, 0, :].cpu().numpy()
+            # Load PubMedBERT model (auto-adds mean pooling layer)
+            model = SentenceTransformer(self.embedding_model)
 
+            # Restore logger level
+            st_logger.setLevel(original_level)
+
+            logger.info("PubMedBERT model loaded successfully")
+
+            def pubmedbert_embedding(texts: List[str]) -> List[List[float]]:
+                """Compute PubMedBERT embeddings using sentence-transformers."""
+                # Generate embeddings (returns numpy array)
+                embeddings = model.encode(texts, convert_to_numpy=True)
+
+                # Convert to list of lists (required by LightRAG)
                 return embeddings.tolist()
 
-            except ImportError:
-                logger.warning("transformers not installed, falling back to OpenAI embeddings")
-                # Fallback to OpenAI embeddings
-                return await openai_embedding(texts)
+            # LightRAG requires embedding_dim attribute on the function
+            pubmedbert_embedding.embedding_dim = self.embedding_dim
 
-        return pubmedbert_embedding
+            return pubmedbert_embedding
+
+        except ImportError as e:
+            logger.error(f"sentence-transformers not installed: {e}")
+            logger.error("Run: pip install sentence-transformers")
+            raise RuntimeError("PubMedBERT embedding function requires: pip install sentence-transformers")
 
     async def insert(self, documents: List[Dict[str, str]]):
         """Insert documents into LightRAG index.

@@ -91,11 +91,30 @@ def create_indra_tools(progress_emitter=None, cache_namespace=None):
                 pass  # Grounding happens below
 
         try:
-            # Use async grounding with Writer KG + INDRA support
+            # Ground entities using local ontology
             grounded = {}
             for entity in entities:
-                result = await grounding_service.ground_entity_async(entity)
-                grounded[entity] = result
+                # Get canonical name and MeSH ID from local ontology
+                canonical_name = await grounding_service.get_canonical(entity)
+                mesh_id = await grounding_service.get_mesh_id(entity)
+                all_synonyms = await grounding_service.get_all_synonyms(entity)
+
+                # Determine entity type (simplified heuristic)
+                entity_type = "molecular"  # Default
+                if mesh_id:
+                    if entity.lower() in ["pm2.5", "particulate matter", "ozone", "pollution"]:
+                        entity_type = "environmental"
+                    elif entity.upper() in ["CRP", "IL-6", "TNF", "HBA1C"]:
+                        entity_type = "biomarker"
+
+                grounded[entity] = {
+                    "id": f"MESH:{mesh_id}" if mesh_id else None,
+                    "name": canonical_name,  # USE THIS FOR INDRA QUERIES
+                    "type": entity_type,
+                    "database": "MESH" if mesh_id else "UNKNOWN",
+                    "identifier": mesh_id,
+                    "synonyms": all_synonyms
+                }
 
             return json.dumps({
                 "status": "success",
