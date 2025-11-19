@@ -8,7 +8,7 @@ import time
 import pytest
 from fastapi.testclient import TestClient
 from indra_agent.main import app
-from indra_agent.services.indra_service import INDRAService
+from indra_agent.services.intervention_discovery_service import InterventionDiscoveryService as INDRAService  # Alias for test compatibility
 
 
 @pytest.fixture
@@ -368,7 +368,7 @@ if __name__ == "__main__":
     print("INTERVENTION DISCOVERY PERFORMANCE BENCHMARKS")
     print("="*80)
 
-    from indra_agent.services.indra_service import INDRAService
+    from indra_agent.services.intervention_discovery_service import InterventionDiscoveryService as INDRAService  # Alias for test compatibility
     from fastapi.testclient import TestClient
     from indra_agent.main import app
 

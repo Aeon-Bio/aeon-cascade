@@ -1,11 +1,23 @@
-"""INDRA API service with caching and fallback support.
+"""INDRA HTTP API service for experimental intervention discovery methods.
 
-This service handles all communication with the INDRA bio-ontology database,
-including entity grounding via Network Search API and path search with fallback
-to cached responses for reliability.
+This service provides HTTP API wrappers for experimental intervention discovery
+features that rely on INDRA Network Search API endpoints not available in the
+Python INDRA library (specifically: shared_regulators query parameter).
+
+ARCHITECTURE NOTE:
+==================
+This service uses INDRA's HTTP Network Search API (network.indra.bio/api/query)
+which provides features like shared_regulators queries that are NOT available in
+the Python `indra.sources.indra_db_rest` module. This is why these methods cannot
+be migrated to IndraNetService (which uses Python library).
+
+Production causal discovery uses IndraNetService (Python library).
+Experimental intervention discovery uses this service (HTTP API).
+
+These endpoints are marked deprecated=True and will be removed or migrated when
+INDRA adds shared_regulators support to Python library.
 """
 
-import asyncio
 import logging
 from typing import Any, Dict, List, Optional
 from urllib.parse import quote
@@ -23,11 +35,15 @@ from indra_agent.config.settings import get_settings
 logger = logging.getLogger(__name__)
 
 
-class INDRAService:
-    """Service for querying INDRA bio-ontology database."""
+class InterventionDiscoveryService:
+    """HTTP API client for INDRA Network Search experimental features.
+
+    KOLMOGOROV-MINIMAL: This class contains ONLY methods required by experimental
+    intervention discovery endpoints. All production code uses IndraNetService.
+    """
 
     def __init__(self, client: Optional[httpx.AsyncClient] = None):
-        """Initialize INDRA service.
+        """Initialize intervention discovery service.
 
         Args:
             client: Optional shared HTTP client. If not provided, creates a new one.
@@ -36,7 +52,6 @@ class INDRAService:
         self.base_url = self.settings.indra_base_url  # network.indra.bio
         self.timeout = self.settings.indra_timeout
         self.cache: Dict[str, List[Dict]] = {}
-        self.entity_cache: Dict[str, Dict] = {}  # Cache for entity resolution
         self.intervention_cache: Dict[str, Any] = {}  # Cache for intervention discovery results
         self._owns_client = client is None  # Track if we own the client
         self.client = client if client is not None else httpx.AsyncClient(timeout=self.timeout)
@@ -70,227 +85,6 @@ class INDRAService:
         response.raise_for_status()
         return response
 
-    async def health_check(self) -> bool:
-        """Check if INDRA Network Search API is available.
-
-        Returns:
-            True if API is healthy, False otherwise
-        """
-        try:
-            url = f"{self.base_url}/api/health"
-            response = await self.client.get(url)
-            response.raise_for_status()
-            logger.info("INDRA Network Search API is healthy")
-            return True
-        except Exception as e:
-            logger.warning(f"INDRA Network Search API health check failed: {e}")
-            return False
-
-    async def autocomplete_entity(
-        self, prefix: str, limit: int = 10
-    ) -> List[Dict[str, Any]]:
-        """Search for entities using autocomplete.
-
-        Args:
-            prefix: Text prefix to search for (e.g., "PM2.5", "CRP")
-            limit: Maximum number of results
-
-        Returns:
-            List of entity matches with name, database, id
-        """
-        try:
-            url = f"{self.base_url}/api/autocomplete"
-            params = {"prefix": prefix, "limit": limit}
-
-            response = await self.client.get(url, params=params)
-            response.raise_for_status()
-
-            data = response.json()
-
-            # API returns list of lists: [["CRP", "HGNC", "2367"], ...]
-            # Convert to list of dicts for easier handling
-            matches = []
-            for item in data:
-                if isinstance(item, list) and len(item) >= 3:
-                    matches.append({
-                        "name": item[0],
-                        "database": item[1],
-                        "id": item[2]
-                    })
-
-            logger.info(f"Autocomplete found {len(matches)} matches for '{prefix}'")
-            return matches
-
-        except httpx.HTTPError as e:
-            logger.error(f"HTTP error in autocomplete: {e}")
-            return []
-        except Exception as e:
-            logger.error(f"Error in autocomplete: {e}")
-            return []
-
-    async def resolve_node_by_name(self, name: str) -> Optional[Dict[str, Any]]:
-        """Resolve a node by name to check if it exists in the graph.
-
-        Args:
-            name: Node name (e.g., "CRP", "IL-6")
-
-        Returns:
-            Node data if found, None otherwise
-        """
-        # Check cache first
-        cache_key = f"name:{name}"
-        if cache_key in self.entity_cache:
-            return self.entity_cache[cache_key]
-
-        try:
-            url = f"{self.base_url}/api/node-name-in-graph"
-            params = {"node-name": name}  # Fixed: OpenAPI schema requires "node-name" not "name"
-
-            response = await self.client.get(url, params=params)
-            response.raise_for_status()
-
-            node_data = response.json()
-            self.entity_cache[cache_key] = node_data
-            logger.info(f"Resolved node by name: {name}")
-            return node_data
-
-        except httpx.HTTPStatusError as e:
-            if e.response.status_code == 404:
-                logger.info(f"Node not found by name: {name}")
-                return None
-            logger.error(f"HTTP error resolving node by name: {e}")
-            return None
-        except Exception as e:
-            logger.error(f"Error resolving node by name: {e}")
-            return None
-
-    async def resolve_node_by_id(self, node_id: str) -> Optional[Dict[str, Any]]:
-        """Resolve a node by ID to check if it exists in the graph.
-
-        Args:
-            node_id: Node ID in CURIE format (e.g., "hgnc:2367", "mesh:D052638")
-
-        Returns:
-            Node data if found, None otherwise
-        """
-        # Check cache first
-        cache_key = f"id:{node_id}"
-        if cache_key in self.entity_cache:
-            return self.entity_cache[cache_key]
-
-        try:
-            # Parse CURIE format to db-name and db-id
-            if ":" not in node_id:
-                logger.warning(f"Node ID not in CURIE format: {node_id}")
-                return None
-
-            db_name, db_id = node_id.split(":", 1)
-
-            url = f"{self.base_url}/api/node-id-in-graph"
-            # Fixed: OpenAPI schema requires "db-name" and "db-id" not "id"
-            params = {"db-name": db_name.lower(), "db-id": db_id}
-
-            response = await self.client.get(url, params=params)
-            response.raise_for_status()
-
-            node_data = response.json()
-            self.entity_cache[cache_key] = node_data
-            logger.info(f"Resolved node by ID: {node_id}")
-            return node_data
-
-        except httpx.HTTPStatusError as e:
-            if e.response.status_code == 404:
-                logger.info(f"Node not found by ID: {node_id}")
-                return None
-            logger.error(f"HTTP error resolving node by ID: {e}")
-            return None
-        except Exception as e:
-            logger.error(f"Error resolving node by ID: {e}")
-            return None
-
-    async def get_xrefs(self, query: str) -> List[Dict[str, Any]]:
-        """Get cross-references for an entity.
-
-        Args:
-            query: Entity identifier or name (e.g., "hgnc:2367", "CRP")
-
-        Returns:
-            List of cross-reference mappings
-        """
-        try:
-            url = f"{self.base_url}/api/xrefs"
-            params = {"query": query}
-
-            response = await self.client.get(url, params=params)
-            response.raise_for_status()
-
-            xrefs = response.json()
-            logger.info(f"Found {len(xrefs)} cross-references for '{query}'")
-            return xrefs
-
-        except httpx.HTTPError as e:
-            logger.error(f"HTTP error getting xrefs: {e}")
-            return []
-        except Exception as e:
-            logger.error(f"Error getting xrefs: {e}")
-            return []
-
-    async def ground_entity(self, entity_name: str) -> Optional[Dict[str, Any]]:
-        """Ground an entity using Network Search API.
-
-        This method attempts to resolve an entity name to a proper graph node
-        using autocomplete followed by node resolution.
-
-        Args:
-            entity_name: Entity name to ground (e.g., "PM2.5", "CRP")
-
-        Returns:
-            Grounded entity data with id, name, and grounding info
-        """
-        # Try autocomplete first
-        matches = await self.autocomplete_entity(entity_name, limit=5)
-
-        if not matches:
-            logger.warning(f"No autocomplete matches for '{entity_name}'")
-            return None
-
-        # Find exact or best match
-        best_match = None
-        for match in matches:
-            match_name = match.get("name", "").lower()
-            if match_name == entity_name.lower():
-                best_match = match
-                break
-
-        if not best_match:
-            best_match = matches[0]  # Take first result
-
-        # Construct CURIE format ID (e.g., "hgnc:2367")
-        database = best_match.get("database", "").lower()
-        entity_id = best_match.get("id", "")
-        curie_id = f"{database}:{entity_id}" if database and entity_id else None
-
-        # Try to resolve by CURIE ID if available
-        if curie_id:
-            node_data = await self.resolve_node_by_id(curie_id)
-            if node_data:
-                return node_data
-
-        # Try to resolve by name
-        node_name = best_match.get("name")
-        if node_name:
-            node_data = await self.resolve_node_by_name(node_name)
-            if node_data:
-                return node_data
-
-        logger.warning(f"Could not fully resolve entity: {entity_name}")
-        # Return best match with CURIE ID for downstream use
-        return {
-            "name": best_match.get("name"),
-            "database": database.upper(),
-            "id": curie_id
-        }
-
     async def _resolve_to_name(self, entity: str) -> Optional[str]:
         """Resolve database ID or alternative name to entity name for INDRA API.
 
@@ -300,8 +94,7 @@ class INDRAService:
         Strategy:
         1. If entity is database ID (contains colon), query Writer KG for canonical MeSH label
         2. If entity is HGNC gene, use INDRA's node-name-in-graph to get canonical name
-        3. Otherwise, check ALTERNATIVE_NAMES mapping for common synonyms
-        4. If not found in mappings, assume it's already a valid name and return as-is
+        3. Otherwise, assume it's already a valid name and return as-is
 
         Args:
             entity: Entity name (e.g., "IL6", "particulate matter") or ID (e.g., "HGNC:6018", "MESH:D052638")
@@ -336,17 +129,6 @@ class INDRAService:
                 except Exception as e:
                     logger.warning(f"Error querying Writer KG for {entity}: {e}")
 
-            # For HGNC/gene IDs: Try INDRA's node-name-in-graph endpoint
-            elif db_name_lower == "hgnc":
-                try:
-                    node_data = await self.resolve_node_by_id(entity)
-                    if node_data and node_data.get("name"):
-                        canonical_name = node_data["name"]
-                        logger.info(f"Resolved {entity} → {canonical_name} (INDRA node resolution)")
-                        return canonical_name
-                except Exception as e:
-                    logger.warning(f"Error resolving HGNC ID via INDRA: {e}")
-
             # Fallback: Check hardcoded mapping (legacy support)
             hardcoded_name = GroundingService.DATABASE_ID_TO_NAME.get(entity)
             if hardcoded_name:
@@ -378,42 +160,8 @@ class INDRAService:
                     logger.warning(f"Writer KG resolution failed for {entity}: {e}")
 
         # Strategy 3: Entity is already a name - return as-is
-        # DO NOT apply ALTERNATIVE_NAMES - Writer KG and INDRA return canonical names
-        # ALTERNATIVE_NAMES is for user input normalization, not for resolution output
         logger.debug(f"Using entity name as-is: {entity}")
         return entity
-
-    def _infer_search_term_from_id(self, db_name: str, db_id: str) -> Optional[str]:
-        """Infer a search term from database namespace.
-
-        This is a last-resort fallback when direct ID lookup fails.
-        For example, MESH:D052638 might not resolve, but we can infer
-        it's related to "Particulate Matter" from context.
-
-        Args:
-            db_name: Database name (e.g., "MESH", "HGNC")
-            db_id: Database ID (e.g., "D052638", "2367")
-
-        Returns:
-            Inferred search term, or None if can't infer
-        """
-        # Minimal inference - only for common patterns
-        # This is NOT a hardcoded mapping, but a hint for autocomplete
-        db_name_lower = db_name.lower()
-
-        # For MESH database, some IDs have well-known patterns
-        if db_name_lower == "mesh":
-            # D052638 is environmental pollutants category
-            if db_id.startswith("D0526"):
-                return "Particulate Matter"  # Hint for autocomplete
-            # D017382 is oxygen species
-            if db_id == "D017382":
-                return "Reactive Oxygen"
-
-        # For HGNC (genes), ID alone usually doesn't help
-        # Autocomplete with ID should work if entity exists
-
-        return None  # No inference, let autocomplete handle it
 
     async def find_causal_paths(
         self,
@@ -628,20 +376,6 @@ class INDRAService:
 
         logger.info(f"Parsed {len(paths)} paths from INDRA response")
         return paths
-
-    def _parse_grounding(self, identifier: str) -> Dict[str, str]:
-        """Parse grounding identifier.
-
-        Args:
-            identifier: INDRA identifier (e.g., "HGNC:6018")
-
-        Returns:
-            Dict with database and id
-        """
-        if ":" in identifier:
-            db, id_val = identifier.split(":", 1)
-            return {"db": db, "id": id_val}
-        return {"db": "UNKNOWN", "id": identifier}
 
     def _map_statement_type(self, stmt_type: str) -> str:
         """Map INDRA statement type to relationship.
@@ -1000,7 +734,7 @@ class INDRAService:
         return paths_sorted
 
     # ============================================================================
-    # INNOVATION: Multi-Biomarker Intervention Discovery
+    # EXPERIMENTAL: Multi-Biomarker Intervention Discovery
     # ============================================================================
 
     async def find_shared_regulators(
@@ -1015,6 +749,9 @@ class INDRAService:
 
         Uses INDRA's shared_regulators query parameter to find common
         upstream regulators that affect multiple biomarkers simultaneously.
+
+        NOTE: This uses HTTP API feature (shared_regulators=True) that is NOT
+        available in Python INDRA library.
 
         Args:
             biomarkers: List of biomarker names (e.g., ["CRP", "IL6", "TNF"])
@@ -1062,7 +799,7 @@ class INDRAService:
                     payload = {
                         "source": source_name,
                         "target": target_name,
-                        "shared_regulators": True,  # ← INDRA's built-in feature!
+                        "shared_regulators": True,  # ← INDRA's built-in feature! (HTTP API only)
                         "depth_limit": max_depth,
                         "belief_cutoff": belief_cutoff,
                         "filter_curated": True,

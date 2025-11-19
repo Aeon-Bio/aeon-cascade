@@ -9,7 +9,7 @@ NO MOCKS - Real integration testing with live INDRA API.
 """
 
 import pytest
-from indra_agent.services.indra_service import INDRAService
+from indra_agent.services.intervention_discovery_service import InterventionDiscoveryService as INDRAService  # Alias for test compatibility
 from indra_agent.services.scm_graph_builder import SCMGraphBuilder
 
 

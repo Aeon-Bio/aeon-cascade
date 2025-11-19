@@ -5,7 +5,7 @@ Tests actual API calls to verify our implementation matches the OpenAPI schema.
 
 import pytest
 import httpx
-from indra_agent.services.indra_service import INDRAService
+from indra_agent.services.intervention_discovery_service import InterventionDiscoveryService as INDRAService  # Alias for test compatibility
 
 
 @pytest.mark.asyncio

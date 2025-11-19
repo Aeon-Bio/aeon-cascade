@@ -7,7 +7,7 @@ transparent explanations about WHY it failed and suggests actionable next steps.
 import pytest
 
 from indra_agent.core.failure_modes import FailureMode, FailureReason
-from indra_agent.services.indra_service import INDRAService
+from indra_agent.services.intervention_discovery_service import InterventionDiscoveryService as INDRAService  # Alias for test compatibility
 from indra_agent.services.indranet_service import IndraNetService
 from indra_agent.services.scm_graph_builder import SCMGraphBuilder
 

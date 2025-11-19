@@ -962,10 +962,10 @@ async def discover_interventions(
     start_time = time.time()
 
     try:
-        # Import INDRAService
-        from indra_agent.services.indra_service import INDRAService
+        # Import InterventionDiscoveryService (Kolmogorov-minimal HTTP API wrapper)
+        from indra_agent.services.intervention_discovery_service import InterventionDiscoveryService
 
-        service = INDRAService()
+        service = InterventionDiscoveryService()
 
         # Run requested methods
         results = {}
@@ -1237,10 +1237,10 @@ async def validate_intervention(
     )
 
     try:
-        # Import INDRAService
-        from indra_agent.services.indra_service import INDRAService
+        # Import InterventionDiscoveryService (Kolmogorov-minimal HTTP API wrapper)
+        from indra_agent.services.intervention_discovery_service import InterventionDiscoveryService
 
-        service = INDRAService()
+        service = InterventionDiscoveryService()
 
         # Find pathways from target to each biomarker
         pathway_analysis = []
