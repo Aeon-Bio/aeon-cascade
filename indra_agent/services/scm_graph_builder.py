@@ -24,7 +24,7 @@ from indra_agent.config.biological_priors import (
     normalize_entity_name,
 )
 from indra_agent.core.failure_modes import FailureMode, DiscoveryAttempt, FailureReason
-from indra_agent.services.indra_service import INDRAService
+from indra_agent.services.indranet_service import IndraNetService
 
 logger = logging.getLogger(__name__)
 
@@ -57,11 +57,11 @@ KNOWN_BIOMARKERS = {
 class SCMGraphBuilder:
     """Build SCM graphs via iterative INDRA discovery + prior knowledge."""
 
-    def __init__(self, indra_service: INDRAService):
+    def __init__(self, indra_service: IndraNetService):
         """Initialize SCM graph builder.
 
         Args:
-            indra_service: INDRA service instance for API queries
+            indra_service: IndraNet service instance for Python INDRA library queries
         """
         self.indra = indra_service
 

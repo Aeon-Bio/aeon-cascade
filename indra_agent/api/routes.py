@@ -920,6 +920,7 @@ async def analyze_graph(request: dict):
         400: {"description": "Invalid request"},
         500: {"description": "Internal server error"},
     },
+    deprecated=True,
 )
 async def discover_interventions(
     request: InterventionDiscoveryRequest,
