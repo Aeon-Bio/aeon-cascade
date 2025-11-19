@@ -1,10 +1,20 @@
 """Writer Knowledge Graph service for MeSH ontology queries.
 
+⚠️  DEPRECATED: This service is deprecated and will be removed in a future release.
+Use LocalOntologyAdapter instead for MeSH resolution (local Memgraph ontology).
+
 This service integrates with Writer's KG API to query the MeSH ontology
 for semantic enrichment, synonym resolution, and hierarchical term expansion.
+
+DEPRECATION RATIONALE:
+- Writer KG trial ended (no budget)
+- Local ontology provides equivalent functionality
+- 30,924 MeSH entities available in Memgraph (local, <100ms queries)
+- See LocalOntologyAdapter for drop-in replacement
 """
 
 import logging
+import warnings
 from typing import Dict, List, Optional
 
 import httpx
@@ -21,7 +31,10 @@ logger = logging.getLogger(__name__)
 
 
 class WriterKGService:
-    """Service for querying Writer Knowledge Graph with MeSH ontology."""
+    """Service for querying Writer Knowledge Graph with MeSH ontology.
+
+    ⚠️  DEPRECATED: Use LocalOntologyAdapter instead.
+    """
 
     def __init__(
         self,
@@ -31,11 +44,21 @@ class WriterKGService:
     ):
         """Initialize Writer KG service.
 
+        ⚠️  DEPRECATED: This service will be removed in a future release.
+        Use LocalOntologyAdapter from indra_agent.services.local_ontology_adapter instead.
+
         Args:
             api_key: Writer API key (defaults to settings)
             graph_id: Writer Graph ID for MeSH ontology (defaults to settings)
             client: Optional shared HTTP client. If not provided, creates a new one.
         """
+        warnings.warn(
+            "WriterKGService is deprecated. Use LocalOntologyAdapter instead. "
+            "Writer KG trial ended and local ontology provides equivalent functionality.",
+            DeprecationWarning,
+            stacklevel=2
+        )
+
         settings = get_settings()
         self.api_key = api_key or settings.writer_api_key
         self.graph_id = graph_id or settings.writer_graph_id

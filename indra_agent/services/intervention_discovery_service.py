@@ -110,24 +110,25 @@ class InterventionDiscoveryService:
             db_name, db_id = entity.split(":", 1)
             db_name_lower = db_name.lower()
 
-            # For MESH IDs: Query Writer KG for canonical label
+            # For MESH IDs: Query local ontology for canonical label
             if db_name_lower == "mesh":
                 try:
-                    from indra_agent.services.writer_kg_service import WriterKGService
-                    writer_kg = WriterKGService()
+                    from indra_agent.services.local_ontology_adapter import LocalOntologyAdapter
+                    local_ontology = LocalOntologyAdapter()
+                    await local_ontology.initialize()
 
-                    # Query Writer KG for this MESH ID
-                    mesh_data = await writer_kg.find_mesh_term(db_id)
-                    await writer_kg.cleanup()
+                    # Query local ontology for this MESH ID
+                    mesh_data = await local_ontology.find_mesh_term(db_id)
+                    await local_ontology.close()
 
                     if mesh_data and mesh_data.get("mesh_label"):
                         canonical_name = mesh_data["mesh_label"]
-                        logger.info(f"Resolved {entity} → {canonical_name} (Writer KG)")
+                        logger.info(f"Resolved {entity} → {canonical_name} (local ontology)")
                         return canonical_name
                     else:
-                        logger.warning(f"Writer KG could not resolve MESH:{db_id}")
+                        logger.warning(f"Local ontology could not resolve MESH:{db_id}")
                 except Exception as e:
-                    logger.warning(f"Error querying Writer KG for {entity}: {e}")
+                    logger.warning(f"Error querying local ontology for {entity}: {e}")
 
             # Fallback: Check hardcoded mapping (legacy support)
             hardcoded_name = GroundingService.DATABASE_ID_TO_NAME.get(entity)
@@ -139,7 +140,7 @@ class InterventionDiscoveryService:
             logger.warning(f"Could not resolve entity ID to name: {entity}")
             return None
 
-        # Strategy 2: Check if it's a known MESH shorthand that needs Writer KG resolution
+        # Strategy 2: Check if it's a known MESH shorthand that needs local ontology resolution
         # Examples: "PM2.5" → "Particulate Matter", "O3" → "Ozone"
         known_mesh_shorthands = {"PM2.5": "D052638", "O3": "D010126", "NO2": None}  # Map to MESH IDs
 
@@ -147,17 +148,18 @@ class InterventionDiscoveryService:
             mesh_id = known_mesh_shorthands[entity]
             if mesh_id:
                 try:
-                    from indra_agent.services.writer_kg_service import WriterKGService
-                    writer_kg = WriterKGService()
-                    mesh_data = await writer_kg.find_mesh_term(mesh_id)
-                    await writer_kg.cleanup()
+                    from indra_agent.services.local_ontology_adapter import LocalOntologyAdapter
+                    local_ontology = LocalOntologyAdapter()
+                    await local_ontology.initialize()
+                    mesh_data = await local_ontology.find_mesh_term(mesh_id)
+                    await local_ontology.close()
 
                     if mesh_data and mesh_data.get("mesh_label"):
                         canonical_name = mesh_data["mesh_label"]
-                        logger.info(f"Resolved shorthand {entity} → {canonical_name} (Writer KG)")
+                        logger.info(f"Resolved shorthand {entity} → {canonical_name} (local ontology)")
                         return canonical_name
                 except Exception as e:
-                    logger.warning(f"Writer KG resolution failed for {entity}: {e}")
+                    logger.warning(f"Local ontology resolution failed for {entity}: {e}")
 
         # Strategy 3: Entity is already a name - return as-is
         logger.debug(f"Using entity name as-is: {entity}")
